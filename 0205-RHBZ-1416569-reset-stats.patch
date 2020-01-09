@@ -3,7 +3,8 @@
  multipathd/cli_handlers.c |   44 ++++++++++++++++++++++++++++++++++++++++++++
  multipathd/cli_handlers.h |    2 ++
  multipathd/main.c         |    2 ++
- 4 files changed, 50 insertions(+)
+ multipathd/multipathd.8   |    6 ++++++
+ 5 files changed, 56 insertions(+)
 
 Index: multipath-tools-130222/multipathd/cli.c
 ===================================================================
@@ -106,3 +107,20 @@ Index: multipath-tools-130222/multipathd/main.c
  	set_handler_callback(ADD+PATH, cli_add_path);
  	set_handler_callback(DEL+PATH, cli_del_path);
  	set_handler_callback(ADD+MAP, cli_add_map);
+Index: multipath-tools-130222/multipathd/multipathd.8
+===================================================================
+--- multipath-tools-130222.orig/multipathd/multipathd.8
++++ multipath-tools-130222/multipathd/multipathd.8
+@@ -87,6 +87,12 @@ Show all available block devices by name
+ .B list|show status
+ Show the number of path checkers in each possible state, the number of monitored paths, and whether multipathd is currently handling a uevent.
+ .TP
++.B reset maps|multipaths stats
++Reset the stat counters for all multipath devices.
++.TP
++.B reset map|multipath $map stats
++Reset the stat counters for a specific multipath device.
++.TP
+ .B add path $path
+ Add a path to the list of monitored paths. $path is as listed in /sys/block (e.g. sda).
+ .TP 

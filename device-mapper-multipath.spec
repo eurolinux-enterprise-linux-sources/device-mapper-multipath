@@ -1,7 +1,7 @@
 Summary: Tools to manage multipath devices using device-mapper
 Name: device-mapper-multipath
 Version: 0.4.9
-Release: 111%{?dist}.2
+Release: 119%{?dist}
 License: GPL+
 Group: System Environment/Base
 URL: http://christophe.varoqui.free.fr/
@@ -224,10 +224,25 @@ Patch0214: 0214-RHBZ-1392115-set-paths-not-ready.patch
 Patch0215: 0215-RHBZ-1444194-fix-check-partitions.patch
 Patch0216: 0216-RHBZ-1448562-fix-reserve.patch
 Patch0217: 0217-RHBZ-1448576-3PAR-config.patch
-Patch0218: 0218-RHBZ-1510837-add-feature-fix.patch
-Patch0219: 0219-RHBZ-1510834-unpriv-sgio.patch
-Patch0220: 0220-RHBZ-1510834-prkey.patch
-Patch0221: 0221-RHBZ-1510839-nimble-config.patch
+Patch0218: 0218-RHBZ-1459370-add-feature-fix.patch
+Patch0219: 0219-RHBZ-1448970-fix-resize.patch
+Patch0220: 0220-RHBZ-1448223-fix-kpartx.patch
+Patch0221: 0221-RH-harden-files.patch
+Patch0222: 0222-RHBZ-1457288-fix-show-maps-json.patch
+Patch0223: 0223-RHBZ-1452210-unpriv-sgio.patch
+Patch0224: 0224-RHBZ-1452210-prkey.patch
+Patch0225: 0225-RH-udevdir.patch
+Patch0226: 0226-RH-allow-overrides-section.patch
+Patch0227: 0227-RHBZ-1465773-fix-path-delay-msg.patch
+Patch0228: 0228-RHBZ-1464634-hauwei-config-update.patch
+Patch0229: 0229-RHBZ-1467987-poll-on-udev-monitor.patch
+Patch0230: 0230-UP-allow-invalid-creates.patch
+Patch0231: 0231-RHBZ-1458852-delay-readying.patch
+Patch0232: 0232-RHBZ-1456955-property-blacklist.patch
+Patch0233: 0233-RHBZ-1451852-1482629-nimble-config.patch
+Patch0234: 0234-RHBZ-1500109-doc-typo.patch
+Patch0235: 0235-RHBZ-1480638-NVMe-support.patch
+Patch0236: 0236-RHBZ-1525348-fix-msg.patch
 
 # runtime
 Requires: %{name}-libs = %{version}-%{release}
@@ -536,11 +551,25 @@ device-mapper-multipath's libdmmp C API library
 %patch0219 -p1
 %patch0220 -p1
 %patch0221 -p1
+%patch0222 -p1
+%patch0223 -p1
+%patch0224 -p1
+%patch0225 -p1
+%patch0226 -p1
+%patch0227 -p1
+%patch0228 -p1
+%patch0229 -p1
+%patch0230 -p1
+%patch0231 -p1
+%patch0232 -p1
+%patch0233 -p1
+%patch0234 -p1
+%patch0235 -p1
+%patch0236 -p1
 cp %{SOURCE1} .
 
 %build
-%define _sbindir /usr/sbin
-%define _libdir /usr/%{_lib}
+%define _udevdir %{_prefix}/lib/udev/rules.d
 %define _libmpathdir %{_libdir}/multipath
 %define _pkgconfdir %{_libdir}/pkgconfig
 make %{?_smp_mflags} LIB=%{_lib}
@@ -581,12 +610,6 @@ fi
 # section in multipathd.service from multi-user.target to sysinit.target
 /bin/systemctl --quiet is-enabled multipathd.service >/dev/null 2>&1 && /bin/systemctl reenable multipathd.service ||:
 
-%triggerun --  %{name} < 0.4.9-16
-%{_bindir}/systemd-sysv-convert --save multipathd >/dev/null 2>&1 ||: 
-bin/systemctl --no-reload enable multipathd.service >/dev/null 2>&1 ||:
-/sbin/chkconfig --del multipathd >/dev/null 2>&1 || :
-/bin/systemctl try-restart multipathd.service >/dev/null 2>&1 || :
-
 %triggerpostun -n %{name}-sysvinit -- %{name} < 0.4.9-16
 /sbin/chkconfig --add mdmonitor >/dev/null 2>&1 || :
 
@@ -602,8 +625,8 @@ bin/systemctl --no-reload enable multipathd.service >/dev/null 2>&1 ||:
 %{_mandir}/man8/multipathd.8.gz
 %{_mandir}/man8/mpathconf.8.gz
 %{_mandir}/man8/mpathpersist.8.gz
-%config /usr/lib/udev/rules.d/62-multipath.rules
-%config /usr/lib/udev/rules.d/11-dm-mpath.rules
+%config %{_udevdir}/62-multipath.rules
+%config %{_udevdir}/11-dm-mpath.rules
 %doc AUTHOR COPYING FAQ
 %doc multipath.conf
 %dir /etc/multipath
@@ -660,22 +683,80 @@ bin/systemctl --no-reload enable multipathd.service >/dev/null 2>&1 ||:
 %{_pkgconfdir}/libdmmp.pc
 
 %changelog
-* Mon Nov 20 2017 Benjamin Marzinski <bmarzins@redhat.com> 0.4.9-111.2
-- Modify Add 0220-RHBZ-1510834-prkey.patch
-  * Improve error checking for mpathpersist
-- Resolves: bz #1510834
+* Wed Jan 31 2018 Benjamin Marzinski <bmarzins@redhat.com> 0.4.9-119
+- Add 0236-RHBZ-1525348-fix-msg.patch
+  * reduced message serverity level
+- Resolves: bz #1525348
 
-* Wed Nov  8 2017 Benjamin Marzinski <bmarzins@redhat.com> 0.4.9-111.1
-- Add 0218-RHBZ-1510837-add-feature-fix.patch
+* Fri Nov 17 2017 Benjamin Marzinski <bmarzins@redhat.com> 0.4.9-118
+- Modify 0224-RHBZ-1452210-prkey.patch
+  * Improve error checking for mpathpersist
+- Resolves: bz #1452210
+
+* Thu Nov 16 2017 Benjamin Marzinski <bmarzins@redhat.com> 0.4.9-117
+- Modify 0235-RHBZ-1480638-NVMe-support.patch
+  * remove overly-restrictive uevent filtering
+- Resolves: bz #1480638
+
+* Tue Oct 31 2017 Benjamin Marzinski <bmarzins@redhat.com> 0.4.9-116
+- Add 0235-RHBZ-1480638-NVMe-support.patch
+  * adds support for multipathing NVMe devices
+- Resolves: bz #1480638
+
+* Tue Oct 10 2017 Benjamin Marzinski <bmarzins@redhat.com> 0.4.9-115
+- Add 0233-RHBZ-1451852-1482629-nimble-config.patch
+- Add 0234-RHBZ-1500109-doc-typo.patch
+- Remove old triggerun scriptlet (bz1470384)
+- Resolves: bz #1451852, #1470384, #1482629, #1500109
+
+* Tue Oct  3 2017 Benjamin Marzinski <bmarzins@redhat.com> 0.4.9-114
+- Add 0226-RH-allow-overrides-section.patch
+  * This is a dummy section that exists to help the transition to RHEL8
+- Add 0227-RHBZ-1465773-fix-path-delay-msg.patch
+- Add 0228-RHBZ-1464634-hauwei-config-update.patch
+- Add 0229-RHBZ-1467987-poll-on-udev-monitor.patch
+  * Do poll first, so udev_monitor_receive_device doesn't return error when
+    there is no uevent
+- Add 0230-UP-allow-invalid-creates.patch
+  * Allow creation of devices with no valid paths.
+- Add 0231-RHBZ-1458852-delay-readying.patch
+  * Add ghost_delay configuration option to delay device activation when only
+    ghost paths exist.
+- Add 0232-RHBZ-1456955-property-blacklist.patch
+  * Add the "property" blacklist type.
+- Resolves: bz #1456955, #1458852, #1464634, #1465773, #1467987
+
+* Wed Sep 20 2017 Benjamin Marzinski <bmarzins@redhat.com> 0.4.9-113
+- Modify 0224-RHBZ-1452210-prkey.patch
+  * fix errow with telling multipathd to set prkeys
+- Add 0225-RH-udevdir.patch
+  * fix rpmdiff complaint about udev rules installation
+- Resolves: bz #1452210
+
+* Tue Sep 19 2017 Benjamin Marzinski <bmarzins@redhat.com> 0.4.9-112
+- Modify 0191-RHBZ-1169168-disable-changed-paths.patch
+  * man page fixup
+- Modfiy 0197-RHBZ-1394059-max-sectors-kb.patch
+  * man page fixup
+- Modify 0205-RHBZ-1416569-reset-stats.patch
+  * man page fixup
+- Add 0218-RHBZ-1459370-add-feature-fix.patch
   * handle null feature string
-- Add 0219-RHBZ-1510834-unpriv-sgio.patch
+- Add 0219-RHBZ-1448970-fix-resize.patch
+  * if the resize fails, try to resume again with the old table.
+- Add 0220-RHBZ-1448223-fix-kpartx.patch
+  * gracefully fail when run on something other than a file or block device
+- Add 0221-RH-harden-files.patch
+  * change build parameters to use position independent code
+- Add 0222-RHBZ-1457288-fix-show-maps-json.patch
+  * handle running "show maps json" with no multipath devices present
+- Add 0223-RHBZ-1452210-unpriv-sgio.patch
   * add unpriv_sgio configuration option to set unpriv_sgio on multipath device
     and paths
-- Add 0220-RHBZ-1510834-prkey.patch
+- Add 0224-RHBZ-1452210-prkey.patch
   * allow setting reservation_key to "file" to set and read keys from
     prkey_file. Also add new multipathd commands to modify the prkey file.
-- Add 0221-RHBZ-1510839-nimble-config.patch
-- Resolves: bz #1510834, #1510837, #1510839
+- Resolves: bz #1459370, #1448970, #1448223, #1457288, #1452210
 
 * Mon May 15 2017 Benjamin Marzinski <bmarzins@redhat.com> 0.4.9-111
 - Remove 0217-RHBZ-1437329-blacklist-oracle-devs.patch

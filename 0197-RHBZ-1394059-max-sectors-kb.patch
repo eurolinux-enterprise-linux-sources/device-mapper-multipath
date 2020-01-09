@@ -414,7 +414,7 @@ Index: multipath-tools-130222/multipath/multipath.conf.5
 ===================================================================
 --- multipath-tools-130222.orig/multipath/multipath.conf.5
 +++ multipath-tools-130222/multipath/multipath.conf.5
-@@ -561,6 +561,10 @@ default is
+@@ -567,6 +567,10 @@ disable access to the path until the wwi
  This sets how may times multipath will retry removing a device that is in-use.
  Between each attempt, multipath will sleep 1 second. The default is
  .I 0
@@ -425,7 +425,7 @@ Index: multipath-tools-130222/multipath/multipath.conf.5
  .
  .SH "blacklist section"
  The
-@@ -672,6 +676,8 @@ section:
+@@ -678,6 +682,8 @@ section:
  .B delay_wait_checks
  .TP
  .B skip_kpartx
@@ -434,7 +434,7 @@ Index: multipath-tools-130222/multipath/multipath.conf.5
  .RE
  .PD
  .LP
-@@ -772,6 +778,8 @@ section:
+@@ -778,6 +784,8 @@ section:
  .B delay_wait_checks
  .TP
  .B skip_kpartx

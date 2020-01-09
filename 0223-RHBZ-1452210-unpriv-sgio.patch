@@ -12,10 +12,10 @@
  multipath/multipath.conf.5 |    9 +++
  11 files changed, 210 insertions(+), 1 deletion(-)
 
-Index: multipath-7.4.z/libmultipath/config.c
+Index: multipath-tools-130222/libmultipath/config.c
 ===================================================================
---- multipath-7.4.z.orig/libmultipath/config.c
-+++ multipath-7.4.z/libmultipath/config.c
+--- multipath-tools-130222.orig/libmultipath/config.c
++++ multipath-tools-130222/libmultipath/config.c
 @@ -347,6 +347,7 @@ merge_hwe (struct hwentry * dst, struct
  	merge_num(delay_wait_checks);
  	merge_num(skip_kpartx);
@@ -40,10 +40,10 @@ Index: multipath-7.4.z/libmultipath/config.c
  
  	/*
  	 * preload default hwtable
-Index: multipath-7.4.z/libmultipath/config.h
+Index: multipath-tools-130222/libmultipath/config.h
 ===================================================================
---- multipath-7.4.z.orig/libmultipath/config.h
-+++ multipath-7.4.z/libmultipath/config.h
+--- multipath-tools-130222.orig/libmultipath/config.h
++++ multipath-tools-130222/libmultipath/config.h
 @@ -67,6 +67,7 @@ struct hwentry {
  	int delay_wait_checks;
  	int skip_kpartx;
@@ -68,10 +68,10 @@ Index: multipath-7.4.z/libmultipath/config.h
  	unsigned int version[3];
  
  	char * dev;
-Index: multipath-7.4.z/libmultipath/configure.c
+Index: multipath-tools-130222/libmultipath/configure.c
 ===================================================================
---- multipath-7.4.z.orig/libmultipath/configure.c
-+++ multipath-7.4.z/libmultipath/configure.c
+--- multipath-tools-130222.orig/libmultipath/configure.c
++++ multipath-tools-130222/libmultipath/configure.c
 @@ -297,6 +297,7 @@ setup_map (struct multipath * mpp, char
  	select_delay_wait_checks(mpp);
  	select_skip_kpartx(mpp);
@@ -80,7 +80,7 @@ Index: multipath-7.4.z/libmultipath/configure.c
  
  	sysfs_set_scsi_tmo(mpp);
  	/*
-@@ -721,6 +722,7 @@ domap (struct multipath * mpp, char * pa
+@@ -711,6 +712,7 @@ domap (struct multipath * mpp, char * pa
  			}
  		}
  		dm_setgeometry(mpp);
@@ -88,10 +88,10 @@ Index: multipath-7.4.z/libmultipath/configure.c
  		return DOMAP_OK;
  	}
  	return DOMAP_FAIL;
-Index: multipath-7.4.z/libmultipath/defaults.h
+Index: multipath-tools-130222/libmultipath/defaults.h
 ===================================================================
---- multipath-7.4.z.orig/libmultipath/defaults.h
-+++ multipath-7.4.z/libmultipath/defaults.h
+--- multipath-tools-130222.orig/libmultipath/defaults.h
++++ multipath-tools-130222/libmultipath/defaults.h
 @@ -27,6 +27,7 @@
  #define DEFAULT_UEV_WAIT_TIMEOUT 30
  #define DEFAULT_SKIP_KPARTX SKIP_KPARTX_OFF
@@ -100,10 +100,10 @@ Index: multipath-7.4.z/libmultipath/defaults.h
  
  #define DEFAULT_CHECKINT	5
  #define MAX_CHECKINT(a)		(a << 2)
-Index: multipath-7.4.z/libmultipath/dict.c
+Index: multipath-tools-130222/libmultipath/dict.c
 ===================================================================
---- multipath-7.4.z.orig/libmultipath/dict.c
-+++ multipath-7.4.z/libmultipath/dict.c
+--- multipath-tools-130222.orig/libmultipath/dict.c
++++ multipath-tools-130222/libmultipath/dict.c
 @@ -1015,6 +1015,28 @@ def_max_sectors_kb_handler(vector strvec
  	return 0;
  }
@@ -279,10 +279,10 @@ Index: multipath-7.4.z/libmultipath/dict.c
 +	install_keyword("unpriv_sgio", &mp_unpriv_sgio_handler, &snprint_mp_unpriv_sgio);
  	install_sublevel_end();
  }
-Index: multipath-7.4.z/libmultipath/propsel.c
+Index: multipath-tools-130222/libmultipath/propsel.c
 ===================================================================
---- multipath-7.4.z.orig/libmultipath/propsel.c
-+++ multipath-7.4.z/libmultipath/propsel.c
+--- multipath-tools-130222.orig/libmultipath/propsel.c
++++ multipath-tools-130222/libmultipath/propsel.c
 @@ -944,3 +944,29 @@ select_max_sectors_kb (struct multipath
  	mp->max_sectors_kb = MAX_SECTORS_KB_UNDEF;
  	return 0;
@@ -313,19 +313,19 @@ Index: multipath-7.4.z/libmultipath/propsel.c
 +	condlog(3, "unpriv_sgio = DISABLED (internal default)");
 +	return 0;
 +}
-Index: multipath-7.4.z/libmultipath/propsel.h
+Index: multipath-tools-130222/libmultipath/propsel.h
 ===================================================================
---- multipath-7.4.z.orig/libmultipath/propsel.h
-+++ multipath-7.4.z/libmultipath/propsel.h
+--- multipath-tools-130222.orig/libmultipath/propsel.h
++++ multipath-tools-130222/libmultipath/propsel.h
 @@ -26,3 +26,4 @@ int select_delay_watch_checks (struct mu
  int select_delay_wait_checks (struct multipath * mp);
  int select_skip_kpartx (struct multipath * mp);
  int select_max_sectors_kb (struct multipath * mp);
 +int select_unpriv_sgio (struct multipath * mp);
-Index: multipath-7.4.z/libmultipath/structs.h
+Index: multipath-tools-130222/libmultipath/structs.h
 ===================================================================
---- multipath-7.4.z.orig/libmultipath/structs.h
-+++ multipath-7.4.z/libmultipath/structs.h
+--- multipath-tools-130222.orig/libmultipath/structs.h
++++ multipath-tools-130222/libmultipath/structs.h
 @@ -134,12 +134,17 @@ enum skip_kpartx_states {
  	SKIP_KPARTX_ON,
  };
@@ -353,10 +353,10 @@ Index: multipath-7.4.z/libmultipath/structs.h
  	unsigned int dev_loss;
  	uid_t uid;
  	gid_t gid;
-Index: multipath-7.4.z/libmultipath/discovery.c
+Index: multipath-tools-130222/libmultipath/discovery.c
 ===================================================================
---- multipath-7.4.z.orig/libmultipath/discovery.c
-+++ multipath-7.4.z/libmultipath/discovery.c
+--- multipath-tools-130222.orig/libmultipath/discovery.c
++++ multipath-tools-130222/libmultipath/discovery.c
 @@ -222,6 +222,50 @@ fail_reload:
  }
  
@@ -408,10 +408,10 @@ Index: multipath-7.4.z/libmultipath/discovery.c
  sysfs_get_timeout(struct path *pp, unsigned int *timeout)
  {
  	const char *attr = NULL;
-Index: multipath-7.4.z/libmultipath/discovery.h
+Index: multipath-tools-130222/libmultipath/discovery.h
 ===================================================================
---- multipath-7.4.z.orig/libmultipath/discovery.h
-+++ multipath-7.4.z/libmultipath/discovery.h
+--- multipath-tools-130222.orig/libmultipath/discovery.h
++++ multipath-tools-130222/libmultipath/discovery.h
 @@ -42,6 +42,7 @@ int store_pathinfo (vector pathvec, vect
  		    struct path **pp_ptr);
  int sysfs_set_scsi_tmo (struct multipath *mpp);
@@ -420,11 +420,11 @@ Index: multipath-7.4.z/libmultipath/discovery.h
  int sysfs_get_timeout(struct path *pp, unsigned int *timeout);
  int sysfs_get_host_pci_name(struct path *pp, char *pci_name);
  int sysfs_get_iscsi_ip_address(struct path *pp, char *ip_address);
-Index: multipath-7.4.z/multipath/multipath.conf.5
+Index: multipath-tools-130222/multipath/multipath.conf.5
 ===================================================================
---- multipath-7.4.z.orig/multipath/multipath.conf.5
-+++ multipath-7.4.z/multipath/multipath.conf.5
-@@ -574,6 +574,11 @@ Between each attempt, multipath will sle
+--- multipath-tools-130222.orig/multipath/multipath.conf.5
++++ multipath-tools-130222/multipath/multipath.conf.5
+@@ -580,6 +580,11 @@ Between each attempt, multipath will sle
  .B max_sectors_kb
  Sets the max_sectors_kb device parameter on all path devices and the multipath
  device to the specified value. Default is device dependent.
@@ -436,7 +436,7 @@ Index: multipath-7.4.z/multipath/multipath.conf.5
  .
  .SH "blacklist section"
  The
-@@ -687,6 +692,8 @@ section:
+@@ -693,6 +698,8 @@ section:
  .B skip_kpartx
  .TP
  .B max_sectors_kb
@@ -445,7 +445,7 @@ Index: multipath-7.4.z/multipath/multipath.conf.5
  .RE
  .PD
  .LP
-@@ -789,6 +796,8 @@ section:
+@@ -795,6 +802,8 @@ section:
  .B skip_kpartx
  .TP
  .B max_sectors_kb

@@ -25,10 +25,10 @@
  multipathd/multipathd.8          |   13 +++
  24 files changed, 576 insertions(+), 217 deletions(-)
 
-Index: multipath-7.4.z/libmpathpersist/mpath_persist.c
+Index: multipath-tools-130222/libmpathpersist/mpath_persist.c
 ===================================================================
---- multipath-7.4.z.orig/libmpathpersist/mpath_persist.c
-+++ multipath-7.4.z/libmpathpersist/mpath_persist.c
+--- multipath-tools-130222.orig/libmpathpersist/mpath_persist.c
++++ multipath-tools-130222/libmpathpersist/mpath_persist.c
 @@ -221,9 +221,7 @@ int mpath_persistent_reserve_out ( int f
  	int map_present;
  	int major, minor;
@@ -184,10 +184,10 @@ Index: multipath-7.4.z/libmpathpersist/mpath_persist.c
  		{
  			condlog(2, "%s: reservation key found in pr in readkeys response", mpp->alias);
  			isFound =1;
-Index: multipath-7.4.z/libmpathpersist/mpath_updatepr.c
+Index: multipath-tools-130222/libmpathpersist/mpath_updatepr.c
 ===================================================================
---- multipath-7.4.z.orig/libmpathpersist/mpath_updatepr.c
-+++ multipath-7.4.z/libmpathpersist/mpath_updatepr.c
+--- multipath-tools-130222.orig/libmpathpersist/mpath_updatepr.c
++++ multipath-tools-130222/libmpathpersist/mpath_updatepr.c
 @@ -1,7 +1,7 @@
 -#include<stdio.h>
 -#include<unistd.h>
@@ -258,10 +258,10 @@ Index: multipath-7.4.z/libmpathpersist/mpath_updatepr.c
 +		snprintf(str, sizeof(str), "unsetprkey");
 +	return do_update_pr(mapname, str);
 +}
-Index: multipath-7.4.z/libmpathpersist/mpathpr.h
+Index: multipath-tools-130222/libmpathpersist/mpathpr.h
 ===================================================================
---- multipath-7.4.z.orig/libmpathpersist/mpathpr.h
-+++ multipath-7.4.z/libmpathpersist/mpathpr.h
+--- multipath-tools-130222.orig/libmpathpersist/mpathpr.h
++++ multipath-tools-130222/libmpathpersist/mpathpr.h
 @@ -1,6 +1,8 @@
  #ifndef MPATHPR_H
  #define MPATHPR_H
@@ -281,10 +281,10 @@ Index: multipath-7.4.z/libmpathpersist/mpathpr.h
  void * mpath_alloc_prin_response(int prin_sa);
  int update_map_pr(struct multipath *mpp);
  int devt2devname (char *devname, char *devt);
-Index: multipath-7.4.z/libmultipath/byteorder.h
+Index: multipath-tools-130222/libmultipath/byteorder.h
 ===================================================================
 --- /dev/null
-+++ multipath-7.4.z/libmultipath/byteorder.h
++++ multipath-tools-130222/libmultipath/byteorder.h
 @@ -0,0 +1,43 @@
 +#ifndef BYTEORDER_H_INCLUDED
 +#define BYTEORDER_H_INCLUDED
@@ -329,10 +329,10 @@ Index: multipath-7.4.z/libmultipath/byteorder.h
 +#define put_be64(x, y) do { (x)._v = cpu_to_be64(y); } while (0)
 +
 +#endif				/* BYTEORDER_H_INCLUDED */
-Index: multipath-7.4.z/libmultipath/checkers/rbd.c
+Index: multipath-tools-130222/libmultipath/checkers/rbd.c
 ===================================================================
---- multipath-7.4.z.orig/libmultipath/checkers/rbd.c
-+++ multipath-7.4.z/libmultipath/checkers/rbd.c
+--- multipath-tools-130222.orig/libmultipath/checkers/rbd.c
++++ multipath-tools-130222/libmultipath/checkers/rbd.c
 @@ -27,6 +27,7 @@
  
  #include "../libmultipath/debug.h"
@@ -363,10 +363,10 @@ Index: multipath-7.4.z/libmultipath/checkers/rbd.c
  static int sysfs_write_rbd_bus(const char *which, const char *buf,
  			       size_t buf_len)
  {
-Index: multipath-7.4.z/libmultipath/config.c
+Index: multipath-tools-130222/libmultipath/config.c
 ===================================================================
---- multipath-7.4.z.orig/libmultipath/config.c
-+++ multipath-7.4.z/libmultipath/config.c
+--- multipath-tools-130222.orig/libmultipath/config.c
++++ multipath-tools-130222/libmultipath/config.c
 @@ -574,6 +574,9 @@ free_config (struct config * conf)
  	if (conf->wwids_file)
  		FREE(conf->wwids_file);
@@ -404,10 +404,10 @@ Index: multipath-7.4.z/libmultipath/config.c
  		goto out;
  
  	if (conf->ignore_new_boot_devs)
-Index: multipath-7.4.z/libmultipath/config.h
+Index: multipath-tools-130222/libmultipath/config.h
 ===================================================================
---- multipath-7.4.z.orig/libmultipath/config.h
-+++ multipath-7.4.z/libmultipath/config.h
+--- multipath-tools-130222.orig/libmultipath/config.h
++++ multipath-tools-130222/libmultipath/config.h
 @@ -3,6 +3,8 @@
  
  #include <sys/types.h>
@@ -443,10 +443,10 @@ Index: multipath-7.4.z/libmultipath/config.h
  
  	vector keywords;
  	vector mptable;
-Index: multipath-7.4.z/libmultipath/defaults.h
+Index: multipath-tools-130222/libmultipath/defaults.h
 ===================================================================
---- multipath-7.4.z.orig/libmultipath/defaults.h
-+++ multipath-7.4.z/libmultipath/defaults.h
+--- multipath-tools-130222.orig/libmultipath/defaults.h
++++ multipath-tools-130222/libmultipath/defaults.h
 @@ -39,6 +39,7 @@
  #define DEFAULT_CONFIGFILE	"/etc/multipath.conf"
  #define DEFAULT_BINDINGS_FILE	"/etc/multipath/bindings"
@@ -455,10 +455,10 @@ Index: multipath-7.4.z/libmultipath/defaults.h
  #define DEFAULT_CONFIG_DIR	"/etc/multipath/conf.d"
  
  char * set_default (char * str);
-Index: multipath-7.4.z/libmultipath/dict.c
+Index: multipath-tools-130222/libmultipath/dict.c
 ===================================================================
---- multipath-7.4.z.orig/libmultipath/dict.c
-+++ multipath-7.4.z/libmultipath/dict.c
+--- multipath-tools-130222.orig/libmultipath/dict.c
++++ multipath-tools-130222/libmultipath/dict.c
 @@ -20,6 +20,8 @@
  #include "defaults.h"
  #include "prio.h"
@@ -675,10 +675,10 @@ Index: multipath-7.4.z/libmultipath/dict.c
  	install_keyword("log_checker_err", &def_log_checker_err_handler, &snprint_def_log_checker_err);
  	install_keyword("reservation_key", &def_reservation_key_handler, &snprint_def_reservation_key);
  	install_keyword("find_multipaths", &def_find_multipaths_handler, &snprint_def_find_multipaths);
-Index: multipath-7.4.z/libmultipath/prkey.c
+Index: multipath-tools-130222/libmultipath/prkey.c
 ===================================================================
 --- /dev/null
-+++ multipath-7.4.z/libmultipath/prkey.c
++++ multipath-tools-130222/libmultipath/prkey.c
 @@ -0,0 +1,167 @@
 +#include "prkey.h"
 +#include "structs.h"
@@ -847,10 +847,10 @@ Index: multipath-7.4.z/libmultipath/prkey.c
 +out:
 +	return ret;
 +}
-Index: multipath-7.4.z/libmultipath/prkey.h
+Index: multipath-tools-130222/libmultipath/prkey.h
 ===================================================================
 --- /dev/null
-+++ multipath-7.4.z/libmultipath/prkey.h
++++ multipath-tools-130222/libmultipath/prkey.h
 @@ -0,0 +1,19 @@
 +#ifndef _PRKEY_H
 +#define _PRKEY_H
@@ -871,10 +871,10 @@ Index: multipath-7.4.z/libmultipath/prkey.h
 +int get_prkey(struct multipath *mpp, uint64_t *prkey);
 +
 +#endif /* _PRKEY_H */
-Index: multipath-7.4.z/libmultipath/propsel.c
+Index: multipath-tools-130222/libmultipath/propsel.c
 ===================================================================
---- multipath-7.4.z.orig/libmultipath/propsel.c
-+++ multipath-7.4.z/libmultipath/propsel.c
+--- multipath-tools-130222.orig/libmultipath/propsel.c
++++ multipath-tools-130222/libmultipath/propsel.c
 @@ -18,6 +18,7 @@
  #include "prio.h"
  #include "discovery.h"
@@ -954,10 +954,10 @@ Index: multipath-7.4.z/libmultipath/propsel.c
  	return 0;
  }
  
-Index: multipath-7.4.z/libmultipath/structs.h
+Index: multipath-tools-130222/libmultipath/structs.h
 ===================================================================
---- multipath-7.4.z.orig/libmultipath/structs.h
-+++ multipath-7.4.z/libmultipath/structs.h
+--- multipath-tools-130222.orig/libmultipath/structs.h
++++ multipath-tools-130222/libmultipath/structs.h
 @@ -2,8 +2,10 @@
  #define _STRUCTS_H
  
@@ -1002,10 +1002,10 @@ Index: multipath-7.4.z/libmultipath/structs.h
  	unsigned char prflag;
  };
  
-Index: multipath-7.4.z/libmultipath/util.c
+Index: multipath-tools-130222/libmultipath/util.c
 ===================================================================
---- multipath-7.4.z.orig/libmultipath/util.c
-+++ multipath-7.4.z/libmultipath/util.c
+--- multipath-tools-130222.orig/libmultipath/util.c
++++ multipath-tools-130222/libmultipath/util.c
 @@ -5,12 +5,14 @@
  #include <unistd.h>
  #include <sys/vfs.h>
@@ -1057,10 +1057,10 @@ Index: multipath-7.4.z/libmultipath/util.c
 +	}
 +	return 0;
 +}
-Index: multipath-7.4.z/libmultipath/util.h
+Index: multipath-tools-130222/libmultipath/util.h
 ===================================================================
---- multipath-7.4.z.orig/libmultipath/util.h
-+++ multipath-7.4.z/libmultipath/util.h
+--- multipath-tools-130222.orig/libmultipath/util.h
++++ multipath-tools-130222/libmultipath/util.h
 @@ -1,6 +1,8 @@
  #ifndef _UTIL_H
  #define _UTIL_H
@@ -1079,10 +1079,10 @@ Index: multipath-7.4.z/libmultipath/util.h
  
  #define safe_sprintf(var, format, args...)	\
  	snprintf(var, sizeof(var), format, ##args) >= sizeof(var)
-Index: multipath-7.4.z/multipathd/cli.c
+Index: multipath-tools-130222/multipathd/cli.c
 ===================================================================
---- multipath-7.4.z.orig/multipathd/cli.c
-+++ multipath-7.4.z/multipathd/cli.c
+--- multipath-tools-130222.orig/multipathd/cli.c
++++ multipath-tools-130222/multipathd/cli.c
 @@ -190,6 +190,10 @@ load_keys (void)
  	r += add_key(keys, "unsetprstatus", UNSETPRSTATUS, 0);
  	r += add_key(keys, "format", FMT, 1);
@@ -1104,10 +1104,10 @@ Index: multipath-7.4.z/multipathd/cli.c
  	add_handler(FORCEQ+DAEMON, NULL);
  	add_handler(RESTOREQ+DAEMON, NULL);
  
-Index: multipath-7.4.z/multipathd/cli.h
+Index: multipath-tools-130222/multipathd/cli.h
 ===================================================================
---- multipath-7.4.z.orig/multipathd/cli.h
-+++ multipath-7.4.z/multipathd/cli.h
+--- multipath-tools-130222.orig/multipathd/cli.h
++++ multipath-tools-130222/multipathd/cli.h
 @@ -37,6 +37,10 @@ enum {
  	__UNSETPRSTATUS,
  	__FMT,
@@ -1130,10 +1130,10 @@ Index: multipath-7.4.z/multipathd/cli.h
  
  #define INITIAL_REPLY_LEN	1200
  
-Index: multipath-7.4.z/multipathd/cli_handlers.c
+Index: multipath-tools-130222/multipathd/cli_handlers.c
 ===================================================================
---- multipath-7.4.z.orig/multipathd/cli_handlers.c
-+++ multipath-7.4.z/multipathd/cli_handlers.c
+--- multipath-tools-130222.orig/multipathd/cli_handlers.c
++++ multipath-tools-130222/multipathd/cli_handlers.c
 @@ -18,6 +18,7 @@
  #include <errno.h>
  #include <libudev.h>
@@ -1142,7 +1142,7 @@ Index: multipath-7.4.z/multipathd/cli_handlers.c
  
  #include "main.h"
  #include "cli.h"
-@@ -1232,3 +1233,71 @@ cli_unsetprstatus(void * v, char ** repl
+@@ -1234,3 +1235,71 @@ cli_unsetprstatus(void * v, char ** repl
  
  	return 0;
  }
@@ -1214,10 +1214,10 @@ Index: multipath-7.4.z/multipathd/cli_handlers.c
 +
 +	return set_prkey(mpp, prkey);
 +}
-Index: multipath-7.4.z/multipathd/cli_handlers.h
+Index: multipath-tools-130222/multipathd/cli_handlers.h
 ===================================================================
---- multipath-7.4.z.orig/multipathd/cli_handlers.h
-+++ multipath-7.4.z/multipathd/cli_handlers.h
+--- multipath-tools-130222.orig/multipathd/cli_handlers.h
++++ multipath-tools-130222/multipathd/cli_handlers.h
 @@ -42,4 +42,6 @@ int cli_reassign (void * v, char ** repl
  int cli_getprstatus(void * v, char ** reply, int * len, void * data);
  int cli_setprstatus(void * v, char ** reply, int * len, void * data);
@@ -1226,10 +1226,10 @@ Index: multipath-7.4.z/multipathd/cli_handlers.h
 +int cli_getprkey(void * v, char ** reply, int * len, void * data);
 +int cli_setprkey(void * v, char ** reply, int * len, void * data);
 +int cli_unsetprkey(void * v, char ** reply, int * len, void * data);
-Index: multipath-7.4.z/multipathd/main.c
+Index: multipath-tools-130222/multipathd/main.c
 ===================================================================
---- multipath-7.4.z.orig/multipathd/main.c
-+++ multipath-7.4.z/multipathd/main.c
+--- multipath-tools-130222.orig/multipathd/main.c
++++ multipath-tools-130222/multipathd/main.c
 @@ -57,6 +57,7 @@
  #include <uevent.h>
  #include <log.h>
@@ -1308,10 +1308,10 @@ Index: multipath-7.4.z/multipathd/main.c
  		return -1;
  
  	pthread_attr_init(&attr);
-Index: multipath-7.4.z/libmultipath/Makefile
+Index: multipath-tools-130222/libmultipath/Makefile
 ===================================================================
---- multipath-7.4.z.orig/libmultipath/Makefile
-+++ multipath-7.4.z/libmultipath/Makefile
+--- multipath-tools-130222.orig/libmultipath/Makefile
++++ multipath-tools-130222/libmultipath/Makefile
 @@ -16,7 +16,7 @@ OBJS = memory.o parser.o vector.o devmap
         pgpolicies.o debug.o regex.o defaults.o uevent.o \
         switchgroup.o uxsock.o print.o alias.o log_pthread.o \
@@ -1321,10 +1321,10 @@ Index: multipath-7.4.z/libmultipath/Makefile
  
  LIBDM_API_FLUSH = $(shell grep -Ecs '^[a-z]*[[:space:]]+dm_task_no_flush' /usr/include/libdevmapper.h)
  
-Index: multipath-7.4.z/multipath/multipath.conf.5
+Index: multipath-tools-130222/multipath/multipath.conf.5
 ===================================================================
---- multipath-7.4.z.orig/multipath/multipath.conf.5
-+++ multipath-7.4.z/multipath/multipath.conf.5
+--- multipath-tools-130222.orig/multipath/multipath.conf.5
++++ multipath-tools-130222/multipath/multipath.conf.5
 @@ -414,6 +414,13 @@ of the wwids for LUNs it has created mul
  Defaults to
  .I /etc/multipath/wwids
@@ -1357,11 +1357,11 @@ Index: multipath-7.4.z/multipath/multipath.conf.5
  .TP
  .B retain_attached_hw_handler
  If set to
-Index: multipath-7.4.z/multipathd/multipathd.8
+Index: multipath-tools-130222/multipathd/multipathd.8
 ===================================================================
---- multipath-7.4.z.orig/multipathd/multipathd.8
-+++ multipath-7.4.z/multipathd/multipathd.8
-@@ -155,6 +155,19 @@ Disable persistent reservation managemen
+--- multipath-tools-130222.orig/multipathd/multipathd.8
++++ multipath-tools-130222/multipathd/multipathd.8
+@@ -161,6 +161,19 @@ Disable persistent reservation managemen
  .B map|multipath $map getprstatus
  Get the current persistent reservation management status of $map
  .TP
@@ -1381,10 +1381,10 @@ Index: multipath-7.4.z/multipathd/multipathd.8
  .B quit|exit
  End interactive session.
  .TP
-Index: multipath-7.4.z/mpathpersist/main.c
+Index: multipath-tools-130222/mpathpersist/main.c
 ===================================================================
---- multipath-7.4.z.orig/mpathpersist/main.c
-+++ multipath-7.4.z/mpathpersist/main.c
+--- multipath-tools-130222.orig/mpathpersist/main.c
++++ multipath-tools-130222/mpathpersist/main.c
 @@ -5,6 +5,7 @@
  #include <fcntl.h>
  #include <checkers.h>

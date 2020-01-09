@@ -1,12 +1,13 @@
 ---
- libmultipath/config.c    |    1 +
- libmultipath/config.h    |    1 +
- libmultipath/dict.c      |   33 +++++++++++++++++++++++++++++++++
- libmultipath/discovery.c |   11 ++++++-----
- libmultipath/discovery.h |    1 +
- libmultipath/structs.h   |    1 +
- multipathd/main.c        |   26 ++++++++++++++++++++++++++
- 7 files changed, 69 insertions(+), 5 deletions(-)
+ libmultipath/config.c      |    1 +
+ libmultipath/config.h      |    1 +
+ libmultipath/dict.c        |   33 +++++++++++++++++++++++++++++++++
+ libmultipath/discovery.c   |   11 ++++++-----
+ libmultipath/discovery.h   |    1 +
+ libmultipath/structs.h     |    1 +
+ multipath/multipath.conf.5 |    6 ++++++
+ multipathd/main.c          |   26 ++++++++++++++++++++++++++
+ 8 files changed, 75 insertions(+), 5 deletions(-)
 
 Index: multipath-tools-130222/libmultipath/discovery.c
 ===================================================================
@@ -208,3 +209,20 @@ Index: multipath-tools-130222/libmultipath/dict.c
  	__deprecated install_keyword("default_selector", &def_selector_handler, NULL);
  	__deprecated install_keyword("default_path_grouping_policy", &def_pgpolicy_handler, NULL);
  	__deprecated install_keyword("default_uid_attribute", &def_uid_attribute_handler, NULL);
+Index: multipath-tools-130222/multipath/multipath.conf.5
+===================================================================
+--- multipath-tools-130222.orig/multipath/multipath.conf.5
++++ multipath-tools-130222/multipath/multipath.conf.5
+@@ -557,6 +557,12 @@ regular filesystem, the device will be r
+ default is
+ .I no
+ .TP
++.B disable_changed_wwids
++If set to \fIyes\fR, multipathd will check the path wwid on change events, and
++if it has changed from the wwid of the multipath device, multipathd will
++disable access to the path until the wwid changes back. The default is
++.I no
++.TP
+ .B remove_retries
+ This sets how may times multipath will retry removing a device that is in-use.
+ Between each attempt, multipath will sleep 1 second. The default is
