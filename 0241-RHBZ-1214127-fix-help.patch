@@ -1,0 +1,18 @@
+---
+ multipath/main.c |    3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+Index: multipath-tools/multipath/main.c
+===================================================================
+--- multipath-tools.orig/multipath/main.c
++++ multipath-tools/multipath/main.c
+@@ -100,7 +100,8 @@ usage (char * progname)
+ 		"  -q      allow queue_if_no_path when multipathd is not running\n"\
+ 		"  -d      dry run, do not create or update devmaps\n" \
+ 		"  -r      force devmap reload\n" \
+-		"  -p      policy failover|multibus|group_by_serial|group_by_prio\n" \
++		"  -p      policy failover|multibus|group_by_serial|group_by_prio|\n" \
++		"          group_by_node_name\n" \
+ 		"  -w      remove a device from the wwids file\n" \
+ 		"  -W      reset the wwids file include only the current devices\n" \
+ 		"  -b fil  bindings file location\n" \

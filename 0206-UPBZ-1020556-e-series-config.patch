@@ -1,0 +1,66 @@
+---
+ libmultipath/hwtable.c  |   12 +++++++++---
+ multipath.conf.defaults |    6 ++++--
+ 2 files changed, 13 insertions(+), 5 deletions(-)
+
+Index: multipath-tools/libmultipath/hwtable.c
+===================================================================
+--- multipath-tools.orig/libmultipath/hwtable.c
++++ multipath-tools/libmultipath/hwtable.c
+@@ -1210,9 +1210,13 @@ static struct hwentry default_hw[] = {
+ 		.checker_name  = RDAC,
+ 		.prio_name     = PRIO_RDAC,
+ 	},
+-	/* LSI/Engenio/NetApp E-Series RDAC storage */
++	/* LSI/Engenio/NetApp E-Series RDAC storage
++	 *
++	 * Maintainer : Sean Stewart
++	 * Mail : sean.stewart@netapp.com
++	 */
+ 	{
+-		.vendor        = "(LSI|ENGENIO)",
++		.vendor        = "(NETAPP|LSI|ENGENIO)",
+ 		.product       = "INF-01-00",
+ 		.bl_product    = "Universal Xport",
+ 		.getuid        = DEFAULT_GETUID,
+@@ -1222,11 +1226,13 @@ static struct hwentry default_hw[] = {
+ 		.pgpolicy      = GROUP_BY_PRIO,
+ 		.pgfailback    = -FAILBACK_IMMEDIATE,
+ 		.rr_weight     = RR_WEIGHT_NONE,
+-		.no_path_retry = 15,
++		.no_path_retry = 30,
+ 		.minio         = DEFAULT_MINIO,
+ 		.minio_rq      = DEFAULT_MINIO_RQ,
+ 		.checker_name  = RDAC,
+ 		.prio_name     = PRIO_RDAC,
++		.detect_prio   = DETECT_PRIO_ON,
++		.retain_hwhandler = RETAIN_HWHANDLER_ON,
+ 	},
+ 	{
+ 		.vendor        = "STK",
+Index: multipath-tools/multipath.conf.defaults
+===================================================================
+--- multipath-tools.orig/multipath.conf.defaults
++++ multipath-tools/multipath.conf.defaults
+@@ -1090,7 +1090,7 @@
+ #		rr_min_io_rq 1
+ #	}
+ #	device {
+-#		vendor "(LSI|ENGENIO)"
++#		vendor "(NETAPP|LSI|ENGENIO)"
+ #		product "INF-01-00"
+ #		product_blacklist "Universal Xport"
+ #		path_grouping_policy group_by_prio
+@@ -1102,9 +1102,11 @@
+ #		prio rdac
+ #		failback immediate
+ #		rr_weight uniform
+-#		no_path_retry 15
++#		no_path_retry 30
+ #		rr_min_io 1000
+ #		rr_min_io_rq 1
++#		retain_attached_hw_handler yes
++#		detect_prio yes
+ #	}
+ #	device {
+ #		vendor "STK"

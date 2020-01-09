@@ -1,0 +1,21 @@
+---
+ libmultipath/prioritizers/alua.c |    4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+Index: multipath-tools/libmultipath/prioritizers/alua.c
+===================================================================
+--- multipath-tools.orig/libmultipath/prioritizers/alua.c
++++ multipath-tools/libmultipath/prioritizers/alua.c
+@@ -118,10 +118,10 @@ int getprio (struct path * pp)
+ 				condlog(0, "%s: couldn't get target port group", pp->dev);
+ 				break;
+ 			case ALUA_PRIO_GETAAS_FAILED:
+-				condlog(0, "%s: couln't get asymmetric access state", pp->dev);
++				condlog(0, "%s: couldn't get asymmetric access state", pp->dev);
+ 				break;
+ 			case ALUA_PRIO_TPGS_FAILED:
+-				condlog(3, "%s: couln't get supported alua states", pp->dev);
++				condlog(3, "%s: couldn't get supported alua states", pp->dev);
+ 				break;
+ 		}
+ 	}

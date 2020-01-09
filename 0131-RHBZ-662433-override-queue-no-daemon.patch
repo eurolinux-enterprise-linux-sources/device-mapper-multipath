@@ -1,0 +1,188 @@
+---
+ libmultipath/dict.c               |    4 +++-
+ libmultipath/structs.h            |    1 +
+ multipathd/cli.c                  |    3 +++
+ multipathd/cli.h                  |    2 ++
+ multipathd/cli_handlers.c         |   18 ++++++++++++++++++
+ multipathd/cli_handlers.h         |    2 ++
+ multipathd/main.c                 |    5 ++++-
+ multipathd/multipathd.init.redhat |   10 +++++++++-
+ 8 files changed, 42 insertions(+), 3 deletions(-)
+
+Index: multipath-tools/libmultipath/dict.c
+===================================================================
+--- multipath-tools.orig/libmultipath/dict.c
++++ multipath-tools/libmultipath/dict.c
+@@ -2190,10 +2190,12 @@ snprint_def_queue_without_daemon (char *
+ {
+ 	switch (conf->queue_without_daemon) {
+ 	case QUE_NO_DAEMON_OFF:
++	case QUE_NO_DAEMON_UNDEF:
+ 		return snprintf(buff, len, "no");
+ 	case QUE_NO_DAEMON_ON:
+-	case QUE_NO_DAEMON_UNDEF:
+ 		return snprintf(buff, len, "yes");
++	case QUE_NO_DAEMON_FORCE:
++		return snprintf(buff, len, "forced");
+ 	}
+ 	return 0;
+ }
+Index: multipath-tools/libmultipath/structs.h
+===================================================================
+--- multipath-tools.orig/libmultipath/structs.h
++++ multipath-tools/libmultipath/structs.h
+@@ -68,6 +68,7 @@ enum queue_without_daemon_states {
+ 	QUE_NO_DAEMON_UNDEF,
+ 	QUE_NO_DAEMON_OFF,
+ 	QUE_NO_DAEMON_ON,
++	QUE_NO_DAEMON_FORCE,
+ };
+ 
+ enum pgtimeouts {
+Index: multipath-tools/multipathd/cli.c
+===================================================================
+--- multipath-tools.orig/multipathd/cli.c
++++ multipath-tools/multipathd/cli.c
+@@ -156,6 +156,7 @@ load_keys (void)
+ 	r += add_key(keys, "reinstate", REINSTATE, 0);
+ 	r += add_key(keys, "fail", FAIL, 0);
+ 	r += add_key(keys, "resize", RESIZE, 0);
++	r += add_key(keys, "forcequeueing", FORCEQ, 0);
+ 	r += add_key(keys, "disablequeueing", DISABLEQ, 0);
+ 	r += add_key(keys, "restorequeueing", RESTOREQ, 0);
+ 	r += add_key(keys, "paths", PATHS, 0);
+@@ -449,6 +450,8 @@ cli_init (void) {
+ 	add_handler(REINSTATE+PATH, NULL);
+ 	add_handler(FAIL+PATH, NULL);
+ 	add_handler(COUNT+PATHS, NULL);
++	add_handler(FORCEQ+DAEMON, NULL);
++	add_handler(RESTOREQ+DAEMON, NULL);
+ 	add_handler(QUIT, NULL);
+ 
+ 	return 0;
+Index: multipath-tools/multipathd/cli_handlers.c
+===================================================================
+--- multipath-tools.orig/multipathd/cli_handlers.c
++++ multipath-tools/multipathd/cli_handlers.c
+@@ -561,6 +561,24 @@ cli_resize(void *v, char **reply, int *l
+ }
+ 
+ int
++cli_force_no_daemon_q(void * v, char ** reply, int * len, void * data)
++{
++	condlog(2, "force queue_without_daemon (operator)");
++	if (conf->queue_without_daemon == QUE_NO_DAEMON_OFF)
++		conf->queue_without_daemon = QUE_NO_DAEMON_FORCE;
++	return 0;
++}
++
++int
++cli_restore_no_daemon_q(void * v, char ** reply, int * len, void * data)
++{
++	condlog(2, "restore queue_without_daemon (operator)");
++	if (conf->queue_without_daemon == QUE_NO_DAEMON_FORCE)
++		conf->queue_without_daemon = QUE_NO_DAEMON_OFF;
++	return 0;
++}
++
++int
+ cli_restore_queueing(void *v, char **reply, int *len, void *data)
+ {
+ 	struct vectors * vecs = (struct vectors *)data;
+Index: multipath-tools/multipathd/cli_handlers.h
+===================================================================
+--- multipath-tools.orig/multipathd/cli_handlers.h
++++ multipath-tools/multipathd/cli_handlers.h
+@@ -28,4 +28,6 @@ int cli_resume(void * v, char ** reply, 
+ int cli_reinstate(void * v, char ** reply, int * len, void * data);
+ int cli_count_paths(void * v, char ** reply, int * len, void * data);
+ int cli_fail(void * v, char ** reply, int * len, void * data);
++int cli_force_no_daemon_q(void * v, char ** reply, int * len, void * data);
++int cli_restore_no_daemon_q(void * v, char ** reply, int * len, void * data);
+ int cli_quit(void * v, char ** reply, int * len, void * data);
+Index: multipath-tools/multipathd/main.c
+===================================================================
+--- multipath-tools.orig/multipathd/main.c
++++ multipath-tools/multipathd/main.c
+@@ -800,6 +800,8 @@ uxlsnrloop (void * ap)
+ 	set_handler_callback(DISABLEQ+MAPS, cli_disable_all_queueing);
+ 	set_handler_callback(RESTOREQ+MAPS, cli_restore_all_queueing);
+ 	set_handler_callback(COUNT+PATHS, cli_count_paths);
++	set_handler_callback(FORCEQ+DAEMON, cli_force_no_daemon_q);
++	set_handler_callback(RESTOREQ+DAEMON, cli_restore_no_daemon_q);
+ 	set_handler_callback(QUIT, cli_quit);
+ 
+ 	umask(077);
+@@ -1553,7 +1555,8 @@ child (void * param)
+ 	running_state = DAEMON_SHUTDOWN;
+ 	block_signal(SIGHUP, NULL);
+ 	lock(vecs->lock);
+-	if (conf->queue_without_daemon == QUE_NO_DAEMON_OFF)
++	if (conf->queue_without_daemon == QUE_NO_DAEMON_OFF ||
++	    conf->queue_without_daemon == QUE_NO_DAEMON_UNDEF)
+ 		vector_foreach_slot(vecs->mpvec, mpp, i)
+ 			dm_queue_if_no_path(mpp->alias, 0);
+ 	remove_maps_and_stop_waiters(vecs);
+Index: multipath-tools/multipathd/cli.h
+===================================================================
+--- multipath-tools.orig/multipathd/cli.h
++++ multipath-tools/multipathd/cli.h
+@@ -8,6 +8,7 @@ enum {
+ 	__REINSTATE,
+ 	__FAIL,
+ 	__RESIZE,
++	__FORCEQ,
+ 	__DISABLEQ,
+ 	__RESTOREQ,
+ 	__PATHS,
+@@ -38,6 +39,7 @@ enum {
+ #define REINSTATE	(1 << __REINSTATE)
+ #define FAIL		(1 << __FAIL)
+ #define RESIZE		(1 << __RESIZE)
++#define FORCEQ		(1 << __FORCEQ)
+ #define DISABLEQ	(1 << __DISABLEQ)
+ #define RESTOREQ	(1 << __RESTOREQ)
+ #define PATHS		(1 << __PATHS)
+Index: multipath-tools/multipathd/multipathd.init.redhat
+===================================================================
+--- multipath-tools.orig/multipathd/multipathd.init.redhat
++++ multipath-tools/multipathd/multipathd.init.redhat
+@@ -73,14 +73,16 @@ start() {
+ 	echo
+ }
+ 
+-stop() {
++check_root() {
+         root_dev=$(awk '{ if ($1 !~ /^[ \t]*#/ && $2 == "/") { print $1; }}' /etc/mtab)
+ 	dm_num=`dmsetup info -c --noheadings -o minor $root_dev 2> /dev/null`
+ 	if [ $? -eq 0 ]; then
+ 		root_dm_device="dm-$dm_num"
+ 		[ -d $syspath/$root_dm_device ] && teardown_slaves $syspath/$root_dm_device
+ 	fi
++}
+ 
++stop() {
+ 	echo -n $"Stopping $prog daemon: "
+ 	killproc $DAEMON
+ 	RETVAL=$?
+@@ -88,7 +90,12 @@ stop() {
+ 	echo
+ }
+ 
++force_queue_without_daemon() {
++	$DAEMON forcequeueing daemon
++}
++
+ restart() {
++	force_queue_without_daemon
+ 	stop
+ 	start
+ }	
+@@ -106,6 +113,7 @@ start)
+ 	start
+ 	;;
+ stop)
++	check_root
+ 	stop
+ 	;;
+ force-reload|reload)

@@ -1,0 +1,305 @@
+---
+ multipathd/cli.c                |    2 +
+ multipathd/cli.h                |    2 +
+ multipathd/cli_handlers.c       |   28 +++++++++++++++++++++++++
+ multipathd/cli_handlers.h       |    1 
+ multipathd/main.c               |   35 ++++++++++++++++++++++++++++++-
+ multipathd/main.h               |    9 ++++++++
+ multipathd/multipathd.init.suse |   44 +++++++++++++++++++++++++++++++++-------
+ 7 files changed, 113 insertions(+), 8 deletions(-)
+
+Index: multipath-tools/multipathd/cli.c
+===================================================================
+--- multipath-tools.orig/multipathd/cli.c
++++ multipath-tools/multipathd/cli.c
+@@ -166,6 +166,7 @@ load_keys (void)
+ 	r += add_key(keys, "multipath", MAP, 1);
+ 	r += add_key(keys, "group", GROUP, 1);
+ 	r += add_key(keys, "reconfigure", RECONFIGURE, 0);
++	r += add_key(keys, "daemon", DAEMON, 0);
+ 	r += add_key(keys, "status", STATUS, 0);
+ 	r += add_key(keys, "stats", STATS, 0);
+ 	r += add_key(keys, "topology", TOPOLOGY, 0);
+@@ -420,6 +421,7 @@ cli_init (void) {
+ 	add_handler(LIST+PATHS, NULL);
+ 	add_handler(LIST+PATHS+FMT, NULL);
+ 	add_handler(LIST+STATUS, NULL);
++	add_handler(LIST+DAEMON, NULL);
+ 	add_handler(LIST+MAPS, NULL);
+ 	add_handler(LIST+MAPS+STATUS, NULL);
+ 	add_handler(LIST+MAPS+STATS, NULL);
+Index: multipath-tools/multipathd/cli.h
+===================================================================
+--- multipath-tools.orig/multipathd/cli.h
++++ multipath-tools/multipathd/cli.h
+@@ -16,6 +16,7 @@ enum {
+ 	__MAP,
+ 	__GROUP,
+ 	__RECONFIGURE,
++	__DAEMON,
+ 	__STATUS,
+ 	__STATS,
+ 	__TOPOLOGY,
+@@ -45,6 +46,7 @@ enum {
+ #define MAP		(1 << __MAP)
+ #define GROUP		(1 << __GROUP)
+ #define RECONFIGURE	(1 << __RECONFIGURE)
++#define DAEMON		(1 << __DAEMON)
+ #define STATUS		(1 << __STATUS)
+ #define STATS		(1 << __STATS)
+ #define TOPOLOGY	(1 << __TOPOLOGY)
+Index: multipath-tools/multipathd/cli_handlers.c
+===================================================================
+--- multipath-tools.orig/multipathd/cli_handlers.c
++++ multipath-tools/multipathd/cli_handlers.c
+@@ -303,6 +303,26 @@ show_status (char ** r, int *len, struct
+ }
+ 
+ int
++show_daemon (char ** r, int *len)
++{
++	char * c;
++	char * reply;
++
++	unsigned int maxlen = INITIAL_REPLY_LEN;
++	reply = MALLOC(maxlen);
++
++	if (!reply)
++		return 1;
++
++	c = reply;
++	c += snprintf(c, INITIAL_REPLY_LEN, "%s\n", daemon_status());
++
++	*r = reply;
++	*len = (int)(c - reply + 1);
++	return 0;
++}
++
++int
+ show_maps (char ** r, int *len, struct vectors * vecs, char * style)
+ {
+ 	int i;
+@@ -390,6 +410,14 @@ cli_list_maps_stats (void * v, char ** r
+ }
+ 
+ int
++cli_list_daemon (void * v, char ** reply, int * len, void * data)
++{
++	condlog(3, "list daemon (operator)");
++
++	return show_daemon(reply, len);
++}
++
++int
+ cli_add_path (void * v, char ** reply, int * len, void * data)
+ {
+ 	struct vectors * vecs = (struct vectors *)data;
+Index: multipath-tools/multipathd/cli_handlers.h
+===================================================================
+--- multipath-tools.orig/multipathd/cli_handlers.h
++++ multipath-tools/multipathd/cli_handlers.h
+@@ -1,6 +1,7 @@
+ int cli_list_paths (void * v, char ** reply, int * len, void * data);
+ int cli_list_paths_fmt (void * v, char ** reply, int * len, void * data);
+ int cli_list_status (void * v, char ** reply, int * len, void * data);
++int cli_list_daemon (void * v, char ** reply, int * len, void * data);
+ int cli_list_maps (void * v, char ** reply, int * len, void * data);
+ int cli_list_maps_fmt (void * v, char ** reply, int * len, void * data);
+ int cli_list_maps_status (void * v, char ** reply, int * len, void * data);
+Index: multipath-tools/multipathd/main.c
+===================================================================
+--- multipath-tools.orig/multipathd/main.c
++++ multipath-tools/multipathd/main.c
+@@ -72,6 +72,7 @@ pthread_cond_t exit_cond = PTHREAD_COND_
+ pthread_mutex_t exit_mutex = PTHREAD_MUTEX_INITIALIZER;
+ 
+ int logsink;
++enum daemon_status running_state;
+ 
+ /*
+  * global copy of vecs for use in sig handlers
+@@ -768,6 +769,7 @@ uxlsnrloop (void * ap)
+ 	set_handler_callback(LIST+PATHS+FMT, cli_list_paths_fmt);
+ 	set_handler_callback(LIST+MAPS, cli_list_maps);
+ 	set_handler_callback(LIST+STATUS, cli_list_status);
++	set_handler_callback(LIST+DAEMON, cli_list_daemon);
+ 	set_handler_callback(LIST+MAPS+STATUS, cli_list_maps_status);
+ 	set_handler_callback(LIST+MAPS+STATS, cli_list_maps_stats);
+ 	set_handler_callback(LIST+MAPS+FMT, cli_list_maps_fmt);
+@@ -818,6 +820,24 @@ exit_daemon (int status)
+ 	return status;
+ }
+ 
++const char *
++daemon_status(void)
++{
++	switch (running_state) {
++	case DAEMON_INIT:
++		return "init";
++	case DAEMON_START:
++		return "startup";
++	case DAEMON_CONFIGURE:
++		return "configure";
++	case DAEMON_RUNNING:
++		return "running";
++	case DAEMON_SHUTDOWN:
++		return "shutdown";
++	}
++	return NULL;
++}
++
+ static void
+ fail_path (struct path * pp, int del_active)
+ {
+@@ -1342,6 +1362,9 @@ sighup (int sig)
+ {
+ 	condlog(2, "reconfigure (SIGHUP)");
+ 
++	if (running_state != DAEMON_RUNNING)
++		return;
++
+ 	lock(gvecs->lock);
+ 	reconfigure(gvecs);
+ 	unlock(gvecs->lock);
+@@ -1422,6 +1445,8 @@ child (void * param)
+ 		pthread_attr_destroy(&log_attr);
+ 	}
+ 
++	running_state = DAEMON_START;
++
+ 	condlog(2, "--------start up--------");
+ 	condlog(2, "read " DEFAULT_CONFIGFILE);
+ 
+@@ -1477,26 +1502,33 @@ child (void * param)
+ 	}
+ 	conf->daemon = 1;
+ 	dm_udev_set_sync_support(0);
++	pthread_create(&uxlsnr_thr, &misc_attr, uxlsnrloop, vecs);
+ 	/*
+ 	 * fetch and configure both paths and multipaths
+ 	 */
++	lock(vecs->lock);
++	running_state = DAEMON_CONFIGURE;
++
+ 	if (configure(vecs, 1)) {
++		unlock(vecs->lock);
+ 		condlog(0, "failure during configuration");
+ 		exit(1);
+ 	}
++	unlock(vecs->lock);
+ 	/*
+ 	 * start threads
+ 	 */
+ 	pthread_create(&check_thr, &misc_attr, checkerloop, vecs);
+ 	pthread_create(&uevent_thr, &misc_attr, ueventloop, vecs);
+-	pthread_create(&uxlsnr_thr, &misc_attr, uxlsnrloop, vecs);
+ 	pthread_attr_destroy(&misc_attr);
+ 
++	running_state = DAEMON_RUNNING;
+ 	pthread_cond_wait(&exit_cond, &exit_mutex);
+ 
+ 	/*
+ 	 * exit path
+ 	 */
++	running_state = DAEMON_SHUTDOWN;
+ 	block_signal(SIGHUP, NULL);
+ 	lock(vecs->lock);
+ 	if (conf->queue_without_daemon == QUE_NO_DAEMON_OFF)
+@@ -1612,6 +1644,7 @@ main (int argc, char *argv[])
+ 	int err;
+ 
+ 	logsink = 1;
++	running_state = DAEMON_INIT;
+ 	dm_init();
+ 
+ 	if (getuid() != 0) {
+Index: multipath-tools/multipathd/main.h
+===================================================================
+--- multipath-tools.orig/multipathd/main.h
++++ multipath-tools/multipathd/main.h
+@@ -3,6 +3,15 @@
+ 
+ #define MAPGCINT 5
+ 
++enum daemon_status {
++	DAEMON_INIT,
++	DAEMON_START,
++	DAEMON_CONFIGURE,
++	DAEMON_RUNNING,
++	DAEMON_SHUTDOWN,
++};
++
++const char * daemon_status(void);
+ int reconfigure (struct vectors *);
+ int ev_add_path (char *, struct vectors *);
+ int ev_remove_path (char *, struct vectors *, int *);
+Index: multipath-tools/multipathd/multipathd.init.suse
+===================================================================
+--- multipath-tools.orig/multipathd/multipathd.init.suse
++++ multipath-tools/multipathd/multipathd.init.suse
+@@ -25,6 +25,9 @@ PIDFILE=/var/run/multipathd.pid
+ # Set the maximum number of open files
+ MAX_OPEN_FDS=4096
+ 
++# Set to enable asynchronous daemon startup
++DAEMON_ASYNC_STARTUP=
++
+ test -x $DAEMON || exit 5
+ 
+ . /etc/rc.status
+@@ -43,13 +46,29 @@ case "$1" in
+ 	    ulimit -n $MAX_OPEN_FDS
+ 	fi
+ 
+-	if [ -f $PIDFILE ]; then
+-		PID="$(cat $PIDFILE)"
+-		PROCNAME="$(ps -o cmd --no-headers $PID)"
+-	fi
++	$DAEMON $ARGS
+ 
+-	if [ "$PROCNAME" != "$DAEMON" ]; then
+-		$DAEMON
++	if [ -n "$DAEMON_ASYNC_STARTUP" ] ; then
++	    rc_status -v
++	    rc_exit
++	fi
++	# Wait for the daemon to start up
++	timeout=$MPATH_INIT_TIMEOUT
++	while [ ! -f $PIDFILE ] ; do
++	    sleep 1
++	    status=$(multipathd -k'show daemon' 2> /dev/null)
++	    if [ "$status" == "configure" ] ; then
++		# Daemon is still configuring, do not increase
++		# the timeout
++		continue
++	    fi
++	    timeout=$(( $timeout - 1 ))
++	    [ $timeout -eq 0 ] && break
++	done
++	if [ $timeout -eq 0 ] ; then
++	    echo -n " (no pidfile)"
++	    rc_failed 1
++t.suse
+ 	fi
+ 	
+ 	# Remember status and be verbose
+@@ -66,7 +85,18 @@ case "$1" in
+ 		PROCNAME="$(ps -o cmd --no-headers $PID)"
+ 	fi
+ 
+-	if [ "$PROCNAME" == "$DAEMON" ]; then
++	timeout=$MPATH_INIT_TIMEOUT
++	while [ $timeout -gt 0 ] ; do
++	    status=$($DAEMON -k'show daemon' 2> /dev/null)
++	    [ "$status" == "configure" ] && continue
++	    [ "$status" == "running" ] && break
++	    sleep 1
++	    timeout=$(( $timeout - 1 ))
++	done
++
++	status=$($DAEMON -k'shutdown' 2> /dev/null)
++	if [ "$status" != "ok" ] ; then
++	    if [ "$PROCNAME" == `basename $DAEMON` ]; then
+ 		kill -TERM $PID
+ 	fi
+ 

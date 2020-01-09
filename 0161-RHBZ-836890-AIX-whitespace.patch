@@ -1,0 +1,31 @@
+---
+ libmultipath/hwtable.c  |    2 +-
+ multipath.conf.defaults |    2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+Index: multipath-tools/libmultipath/hwtable.c
+===================================================================
+--- multipath-tools.orig/libmultipath/hwtable.c
++++ multipath-tools/libmultipath/hwtable.c
+@@ -806,7 +806,7 @@ static struct hwentry default_hw[] = {
+ 		/* AIX VDASD */
+ 		.vendor        = "AIX",
+ 		.product       = "VDASD",
+-		.getuid        = DEFAULT_GETUID,
++		.getuid        = "/lib/udev/scsi_id --whitelisted --replace-whitespace --device=/dev/%n",
+ 		.features      = DEFAULT_FEATURES,
+ 		.hwhandler     = DEFAULT_HWHANDLER,
+ 		.selector      = DEFAULT_SELECTOR,
+Index: multipath-tools/multipath.conf.defaults
+===================================================================
+--- multipath-tools.orig/multipath.conf.defaults
++++ multipath-tools/multipath.conf.defaults
+@@ -751,7 +751,7 @@
+ #		vendor "AIX"
+ #		product "VDASD"
+ #		path_grouping_policy multibus
+-#		getuid_callout "/lib/udev/scsi_id --whitelisted --device=/dev/%n"
++#		getuid_callout "/lib/udev/scsi_id --whitelisted --replace-whitespace --device=/dev/%n"
+ #		path_selector "round-robin 0"
+ #		path_checker directio
+ #		features "0"

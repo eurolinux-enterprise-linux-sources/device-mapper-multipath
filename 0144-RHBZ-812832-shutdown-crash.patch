@@ -1,0 +1,52 @@
+---
+ libmultipath/waiter.c |   20 +-------------------
+ 1 file changed, 1 insertion(+), 19 deletions(-)
+
+Index: multipath-tools/libmultipath/waiter.c
+===================================================================
+--- multipath-tools.orig/libmultipath/waiter.c
++++ multipath-tools/libmultipath/waiter.c
+@@ -75,18 +75,7 @@ void stop_waiter_thread (struct multipat
+ 	thread = wp->thread;
+ 	condlog(2, "%s: stop event checker thread (%lu)", wp->mapname, thread);
+ 
+-	pthread_kill(thread, SIGUSR1);
+-}
+-
+-static sigset_t unblock_signals(void)
+-{
+-	sigset_t set, old;
+-
+-	sigemptyset(&set);
+-	sigaddset(&set, SIGHUP);
+-	sigaddset(&set, SIGUSR1);
+-	pthread_sigmask(SIG_UNBLOCK, &set, &old);
+-	return old;
++	pthread_cancel(thread);
+ }
+ 
+ /*
+@@ -95,7 +84,6 @@ static sigset_t unblock_signals(void)
+  */
+ int waiteventloop (struct event_thread *waiter)
+ {
+-	sigset_t set;
+ 	int event_nr;
+ 	int r;
+ 
+@@ -125,15 +113,9 @@ int waiteventloop (struct event_thread *
+ 
+ 	dm_task_no_open_count(waiter->dmt);
+ 
+-	/* accept wait interruption */
+-	set = unblock_signals();
+-
+ 	/* wait */
+ 	r = dm_task_run(waiter->dmt);
+ 
+-	/* wait is over : event or interrupt */
+-	pthread_sigmask(SIG_SETMASK, &set, NULL);
+-
+ 	if (!r) /* wait interrupted by signal */
+ 		return -1;
+ 

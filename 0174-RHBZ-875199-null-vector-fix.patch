@@ -1,0 +1,18 @@
+---
+ libmultipath/vector.c |    3 +++
+ 1 file changed, 3 insertions(+)
+
+Index: multipath-tools/libmultipath/vector.c
+===================================================================
+--- multipath-tools.orig/libmultipath/vector.c
++++ multipath-tools/libmultipath/vector.c
+@@ -78,6 +78,9 @@ find_slot(vector v, void * addr)
+ {
+ 	int i;
+ 
++	if (!v)
++		return -1;
++
+ 	for (i = 0; i < (v->allocated / VECTOR_DEFAULT_SIZE); i++)
+ 		if (v->slot[i] == addr)
+ 			return i;

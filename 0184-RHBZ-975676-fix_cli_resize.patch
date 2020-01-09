@@ -1,0 +1,109 @@
+---
+ libmultipath/discovery.c  |   24 ++++++++++++++++++++++++
+ multipathd/cli_handlers.c |   16 +++++++++++++---
+ 2 files changed, 37 insertions(+), 3 deletions(-)
+
+Index: multipath-tools/libmultipath/discovery.c
+===================================================================
+--- multipath-tools.orig/libmultipath/discovery.c
++++ multipath-tools/libmultipath/discovery.c
+@@ -139,6 +139,10 @@ path_discovery (vector pathvec, struct c
+ extern int \
+ sysfs_get_##fname (struct sysfs_device * dev, char * buff, size_t len) \
+ { \
++	if (!dev) {\
++		condlog(0, "can't get sysfs value %s. sysdev is NULL", #fname); \
++		return 1; \
++	} \
+ 	if (sysfs_attr_get_value(dev->devpath, #fname, buff, len) != 0) \
+ 		return 1; \
+ 	strchop(buff); \
+@@ -155,6 +159,10 @@ declare_sysfs_get_str(state);
+ int
+ sysfs_get_dev (struct sysfs_device * dev, char * buff, size_t len)
+ {
++	if (!dev) {
++		condlog(0, "can't get sysfs value dev. sysdev is NULL");
++		return 1;
++	}
+ 	if (sysfs_attr_get_value(dev->devpath, "dev", buff, len) != 0) {
+ 		condlog(3, "%s: no 'dev' attribute in sysfs", dev->kernel);
+ 		return 1;
+@@ -170,6 +178,10 @@ sysfs_get_timeout(struct sysfs_device *d
+ 	int r;
+ 	unsigned int t;
+ 
++	if (!dev) {
++		condlog(0, "can't get sysfs value timeout. sysdev is NULL");
++		return 1;
++	}
+ 	if (safe_sprintf(attr_path, "%s/device", dev->devpath))
+ 		return 1;
+ 
+@@ -192,6 +204,10 @@ sysfs_get_ro (struct sysfs_device * dev,
+ 	char buff[NAME_SIZE];
+ 	int r;
+ 
++	if (!dev) {
++		condlog(0, "can't get sysfs value ro. sysdev is NULL");
++		return 1;
++	}
+ 	if (sysfs_attr_get_value(dev->devpath, "ro", buff, NAME_SIZE) != 0)
+ 		return 1;
+ 
+@@ -208,6 +224,10 @@ sysfs_get_size (struct sysfs_device * de
+ 	char buff[NAME_SIZE];
+ 	int r;
+ 
++	if (!dev) {
++		condlog(0, "can't get sysfs value size. sysdev is NULL");
++		return 1;
++	}
+ 	if (sysfs_attr_get_value(dev->devpath, "size", buff, NAME_SIZE) != 0)
+ 		return 1;
+ 
+@@ -237,6 +257,10 @@ sysfs_get_fc_nodename (struct sysfs_devi
+ 	if (!sysfs_attr_get_value(attr_path, "node_name", node, NODE_NAME_SIZE))
+ 		return 0;
+ 
++	if (!dev) {
++		condlog(0, "can't get sysfs value nodename. sysdev is NULL");
++		return 1;
++	}
+ 	if (sscanf(dev->devpath, "/devices/platform/host%u/session%u/",
+ 	    &checkhost, &session) != 2)
+ 		return 1;
+Index: multipath-tools/multipathd/cli_handlers.c
+===================================================================
+--- multipath-tools.orig/multipathd/cli_handlers.c
++++ multipath-tools/multipathd/cli_handlers.c
+@@ -519,7 +519,7 @@ cli_resize(void *v, char **reply, int *l
+ 	struct vectors * vecs = (struct vectors *)data;
+ 	char * mapname = get_keyparam(v, MAP);
+ 	struct multipath *mpp;
+-	int minor;
++	int i, j, minor;
+ 	unsigned long long size;
+ 	struct pathgroup *pgp;
+ 	struct path *pp;
+@@ -535,8 +535,18 @@ cli_resize(void *v, char **reply, int *l
+ 		return 1;
+ 	}
+ 
+-	pgp = VECTOR_SLOT(mpp->pg, 0);
+-	pp = VECTOR_SLOT(pgp->paths, 0);
++	vector_foreach_slot (mpp->pg, pgp, i){
++		if (!pgp->paths)
++			continue;
++		vector_foreach_slot (pgp->paths, pp, j){
++			if (pp->sysdev)
++				goto found;
++		}
++	}
++	/* we couldn't find a path with sysdev set */
++	condlog(0, "%s: couldn't get path. cannot resize", mapname);
++	return 1;
++found:
+ 	if (sysfs_get_size(pp->sysdev, &size)) {
+ 		condlog(0, "%s: couldn't get size for sysfs. cannot resize",
+ 			mapname);

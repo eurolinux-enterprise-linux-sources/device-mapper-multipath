@@ -1,0 +1,49 @@
+---
+ libmultipath/hwtable.c     |    2 +-
+ multipath/multipath.conf.5 |    6 +++---
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+Index: multipath-tools/libmultipath/hwtable.c
+===================================================================
+--- multipath-tools.orig/libmultipath/hwtable.c
++++ multipath-tools/libmultipath/hwtable.c
+@@ -1166,7 +1166,7 @@ static struct hwentry default_hw[] = {
+ 		.checker_name  = RDAC,
+ 		.prio_name     = PRIO_RDAC,
+ 	},
+-	/* LSI Generic rdac storage */
++	/* LSI/Engenio/NetApp E-Series RDAC storage */
+ 	{
+ 		.vendor        = "(LSI|ENGENIO)",
+ 		.product       = "INF-01-00",
+Index: multipath-tools/multipath/multipath.conf.5
+===================================================================
+--- multipath-tools.orig/multipath/multipath.conf.5
++++ multipath-tools/multipath/multipath.conf.5
+@@ -192,7 +192,7 @@ the preferred port bit.
+ Generate the path priority for NetApp arrays.
+ .TP
+ .B rdac
+-Generate the path priority for LSI/Engenio RDAC controller.
++Generate the path priority for LSI/Engenio/NetApp E-Series RDAC controller.
+ .TP
+ .B hp_sw
+ Generate the path priority for Compaq/HP controller in
+@@ -244,7 +244,7 @@ state.
+ Check the path state for HP storage arrays with Active/Standby firmware.
+ .TP
+ .B rdac
+-Check the path state for LSI/Engenio RDAC storage controller.
++Check the path state for LSI/Engenio/NetApp E-Series RDAC storage controller.
+ .TP
+ .B directio
+ Read the first sector with direct I/O.
+@@ -499,7 +499,7 @@ Hardware handler for SCSI-3 ALUA arrays.
+ Hardware handler for Compaq/HP controllers.
+ .TP
+ .B 1 rdac
+-Hardware handler for the LSI/Engenio RDAC controllers.
++Hardware handler for the LSI/Engenio/NetApp E-Series RDAC storage controller.
+ .RE
+ .LP
+ The following attributes are optional; if not set the default values

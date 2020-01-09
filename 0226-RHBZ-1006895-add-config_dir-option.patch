@@ -1,0 +1,541 @@
+---
+ libmultipath/config.c      |   13 +++++
+ libmultipath/config.h      |    2 
+ libmultipath/defaults.h    |    1 
+ libmultipath/dict.c        |   68 +++++++++++++++++++++++++++---
+ libmultipath/parser.c      |  100 +++++++++++++++++++++++++++++++++------------
+ libmultipath/parser.h      |    3 -
+ multipath.conf.annotated   |   10 ++++
+ multipath.conf.defaults    |    1 
+ multipath/multipath.conf.5 |    7 +++
+ 9 files changed, 171 insertions(+), 34 deletions(-)
+
+Index: multipath-tools/libmultipath/parser.c
+===================================================================
+--- multipath-tools.orig/libmultipath/parser.c
++++ multipath-tools/libmultipath/parser.c
+@@ -18,10 +18,14 @@
+  */
+ 
+ #include <syslog.h>
++#include <dirent.h>
++#include <limits.h>
++#include <errno.h>
+ 
+ #include "parser.h"
+ #include "memory.h"
+ #include "debug.h"
++#include "defaults.h"
+ 
+ /* local vars */
+ static int sublevel = 0;
+@@ -447,14 +451,15 @@ set_value(vector strvec)
+ /* non-recursive configuration stream handler */
+ static int kw_level = 0;
+ 
+-int warn_on_duplicates(vector uniques, char *str)
++int warn_on_duplicates(vector uniques, char *str, char *file)
+ {
+ 	char *tmp;
+ 	int i;
+ 
+ 	vector_foreach_slot(uniques, tmp, i) {
+ 		if (!strcmp(str, tmp)) {
+-			condlog(1, "multipath.conf line %d, duplicate keyword: %s", line_nr, str);
++			condlog(1, "%s line %d, duplicate keyword: %s",
++				file, line_nr, str);
+ 			return 0;
+ 		}
+ 	}
+@@ -490,65 +495,70 @@ is_sublevel_keyword(char *str)
+ }
+ 
+ int
+-validate_config_strvec(vector strvec)
++validate_config_strvec(vector strvec, char *file)
+ {
+ 	char *str;
+ 	int i;
+ 
+ 	str = VECTOR_SLOT(strvec, 0);
+ 	if (str == NULL) {
+-		condlog(0, "can't parse option on line %d of config file",
+-			line_nr);
++		condlog(0, "can't parse option on line %d of %s",
++			line_nr, file);
+ 	return -1;
+ 	}
+ 	if (*str == '}') {
+ 		if (VECTOR_SIZE(strvec) > 1)
+-			condlog(0, "ignoring extra data starting with '%s' on line %d of config file", (char *)VECTOR_SLOT(strvec, 1), line_nr);
++			condlog(0, "ignoring extra data starting with '%s' on line %d of %s", (char *)VECTOR_SLOT(strvec, 1), line_nr, file);
+ 		return 0;
+ 	}
+ 	if (*str == '{') {
+-		condlog(0, "invalid keyword '%s' on line %d of config file", str, line_nr);
++		condlog(0, "invalid keyword '%s' on line %d of %s",
++			str, line_nr, file);
+ 		return -1;
+ 	}
+ 	if (is_sublevel_keyword(str)) {
+ 		str = VECTOR_SLOT(strvec, 1);
+ 		if (str == NULL)
+-			condlog(0, "missing '{' on line %d of config file", line_nr);
++			condlog(0, "missing '{' on line %d of %s",
++				line_nr, file);
+ 		else if (*str != '{')
+-			condlog(0, "expecting '{' on line %d of config file. found '%s'", line_nr, str);
++			condlog(0, "expecting '{' on line %d of %s. found '%s'",
++				line_nr, file, str);
+ 		else if (VECTOR_SIZE(strvec) > 2)
+-			condlog(0, "ignoring extra data starting with '%s' on line %d of config file", (char *)VECTOR_SLOT(strvec, 2), line_nr);
++			condlog(0, "ignoring extra data starting with '%s' on line %d of %s", (char *)VECTOR_SLOT(strvec, 2), line_nr, file);
+ 		return 0;
+ 	}
+ 	str = VECTOR_SLOT(strvec, 1);
+ 	if (str == NULL) {
+-		condlog(0, "missing value for option '%s' on line %d of config file", (char *)VECTOR_SLOT(strvec, 0), line_nr);
++		condlog(0, "missing value for option '%s' on line %d of %s",
++			(char *)VECTOR_SLOT(strvec, 0), line_nr, file);
+ 		return -1;
+ 	}
+ 	if (*str != '"') {
+ 		if (VECTOR_SIZE(strvec) > 2)
+-			condlog(0, "ignoring extra data starting with '%s' on line %d of config file", (char *)VECTOR_SLOT(strvec, 2), line_nr);
++			condlog(0, "ignoring extra data starting with '%s' on line %d of %s", (char *)VECTOR_SLOT(strvec, 2), line_nr, file);
+ 		return 0;
+ 	}
+ 	for (i = 2; i < VECTOR_SIZE(strvec); i++) {
+ 		str = VECTOR_SLOT(strvec, i);
+ 		if (str == NULL) {
+-			condlog(0, "can't parse value on line %d of config file", line_nr);
++			condlog(0, "can't parse value on line %d of %s",
++				line_nr, file);
+ 			return -1;
+ 		}
+ 		if (*str == '"') {
+ 			if (VECTOR_SIZE(strvec) > i + 1)
+-				condlog(0, "ignoring extra data starting with '%s' on line %d of config file", (char *)VECTOR_SLOT(strvec, (i + 1)), line_nr);
++				condlog(0, "ignoring extra data starting with '%s' on line %d of %s", (char *)VECTOR_SLOT(strvec, (i + 1)), line_nr, file);
+ 			return 0;
+ 		}
+ 	}
+-	condlog(0, "missing closing quotes on line %d of config file",
+-		line_nr);
++	condlog(0, "missing closing quotes on line %d of %s",
++		line_nr, file);
+ 	return 0;
+ }
+ 
+ int
+-process_stream(vector keywords)
++process_stream(vector keywords, char *file)
+ {
+ 	int i;
+ 	int r = 0;
+@@ -577,7 +587,7 @@ process_stream(vector keywords)
+ 		if (!strvec)
+ 			continue;
+ 
+-		if (validate_config_strvec(strvec) != 0) {
++		if (validate_config_strvec(strvec, file) != 0) {
+ 			free_strvec(strvec);
+ 			continue;
+ 		}
+@@ -589,8 +599,8 @@ process_stream(vector keywords)
+ 				free_strvec(strvec);
+ 				break;
+ 			}
+-			condlog(0, "unmatched '%s' at line %d of config file",
+-				EOB, line_nr);
++			condlog(0, "unmatched '%s' at line %d of %s",
++				EOB, line_nr, file);
+ 		}
+ 
+ 		for (i = 0; i < VECTOR_SIZE(keywords); i++) {
+@@ -598,7 +608,7 @@ process_stream(vector keywords)
+ 
+ 			if (!strcmp(keyword->string, str)) {
+ 				if (keyword->unique &&
+-				    warn_on_duplicates(uniques, str)) {
++				    warn_on_duplicates(uniques, str, file)) {
+ 						r = 1;
+ 						free_strvec(strvec);
+ 						goto out;
+@@ -608,7 +618,7 @@ process_stream(vector keywords)
+ 
+ 				if (keyword->sub) {
+ 					kw_level++;
+-					r += process_stream(keyword->sub);
++					r += process_stream(keyword->sub, file);
+ 					kw_level--;
+ 				}
+ 				break;
+@@ -616,8 +626,8 @@ process_stream(vector keywords)
+ 		}
+ 		if (i >= VECTOR_SIZE(keywords))
+ 			condlog(1,
+-				"multipath.conf line %d, invalid keyword: %s",
+-				line_nr, str);
++				"%s line %d, invalid keyword: %s",
++				file, line_nr, str);
+ 
+ 		free_strvec(strvec);
+ 	}
+@@ -628,6 +638,46 @@ out:
+ 	return r;
+ }
+ 
++/* if multipath fails to process the config directory, it should continue,
++ * with just a warning message */
++void
++process_config_dir(vector keywords, char *dir)
++{
++	struct dirent **namelist;
++	int i, n;
++	char path[LINE_MAX];
++
++	if (dir[0] != '/') {
++		condlog(1, "config_dir '%s' must be a fully qualified path",
++			dir);
++		return;
++	}
++	n = scandir(dir, &namelist, NULL, alphasort);
++	if (n < 0) {
++		if (errno == ENOENT)
++			condlog(3, "No configuration dir '%s'", dir);
++		else
++			condlog(0, "couldn't open configuration dir '%s': %s",
++				dir, strerror(errno));
++		return;
++	}
++	for (i = 0; i < n; i++) {
++		if (!strstr(namelist[i]->d_name, ".conf"))
++			continue;
++		snprintf(path, LINE_MAX, "%s/%s", dir, namelist[i]->d_name);
++		path[LINE_MAX-1] = '\0';
++		stream = fopen(path, "r");
++		if (!stream) {
++			condlog(0, "couldn't open configuration file '%s': %s",
++				path, strerror(errno));
++			continue;
++		}
++		line_nr = 0;
++		process_stream(keywords, path);
++		fclose(stream);
++	}
++}
++
+ /* Data initialization */
+ int
+ init_data(char *conf_file, void (*init_keywords) (void))
+@@ -654,7 +704,7 @@ init_data(char *conf_file, void (*init_k
+ 
+ 	/* Stream handling */
+ 	line_nr = 0;
+-	r = process_stream(keywords);
++	r = process_stream(keywords, conf_file);
+ 	fclose(stream);
+ 	//free_keywords(keywords);
+ 
+Index: multipath-tools/libmultipath/dict.c
+===================================================================
+--- multipath-tools.orig/libmultipath/dict.c
++++ multipath-tools/libmultipath/dict.c
+@@ -85,6 +85,8 @@ verbosity_handler(vector strvec)
+ static int
+ udev_dir_handler(vector strvec)
+ {
++	if (conf->udev_dir)
++		FREE(conf->udev_dir);
+ 	conf->udev_dir = set_value(strvec);
+ 
+ 	if (!conf->udev_dir)
+@@ -96,6 +98,8 @@ udev_dir_handler(vector strvec)
+ static int
+ multipath_dir_handler(vector strvec)
+ {
++	if (conf->multipath_dir)
++		FREE(conf->multipath_dir);
+ 	conf->multipath_dir = set_value(strvec);
+ 
+ 	if (!conf->multipath_dir)
+@@ -107,6 +111,8 @@ multipath_dir_handler(vector strvec)
+ static int
+ def_selector_handler(vector strvec)
+ {
++	if (conf->selector)
++		FREE(conf->selector);
+ 	conf->selector = set_value(strvec);
+ 
+ 	if (!conf->selector)
+@@ -134,6 +140,8 @@ def_pgpolicy_handler(vector strvec)
+ static int
+ def_getuid_callout_handler(vector strvec)
+ {
++	if (conf->getuid)
++		FREE(conf->getuid);
+ 	conf->getuid = set_value(strvec);
+ 
+ 	if (!conf->getuid)
+@@ -157,9 +165,14 @@ def_prio_handler(vector strvec)
+ 		while(*++args && isblank(*args)); /* Do nothing */
+ 	}
+ 
++	if (conf->prio_name)
++		FREE(conf->prio_name);
+ 	conf->prio_name = STRDUP(name);
+-	if (args && *args)
++	if (args && *args) {
++		if (conf->prio_args)
++			FREE(conf->prio_args);
+ 		conf->prio_args = STRDUP(args);
++	}
+ 
+ 	FREE(name);
+ 	return 0;
+@@ -168,6 +181,8 @@ def_prio_handler(vector strvec)
+ static int
+ def_features_handler(vector strvec)
+ {
++	if (conf->features)
++		FREE(conf->features);
+ 	conf->features = set_value(strvec);
+ 
+ 	if (!conf->features)
+@@ -179,6 +194,8 @@ def_features_handler(vector strvec)
+ static int
+ def_path_checker_handler(vector strvec)
+ {
++	if (conf->checker_name)
++		FREE(conf->checker_name);
+ 	conf->checker_name = set_value(strvec);
+ 
+ 	if (!conf->checker_name)
+@@ -401,6 +418,23 @@ def_no_path_retry_handler(vector strvec)
+ 	return 0;
+ }
+ 
++
++static int
++def_config_dir_handler(vector strvec)
++{
++	/* this is only valid in the main config file */
++	if (conf->processed_main_config)
++		return 0;
++	if (conf->config_dir)
++		FREE(conf->config_dir);
++	conf->config_dir = set_value(strvec);
++
++	if (!conf->config_dir)
++		return 1;
++
++	return 0;
++}
++
+ static int
+ def_hwtable_regex_match(vector strvec)
+ {
+@@ -720,9 +754,12 @@ def_force_sync_handler(vector strvec)
+ static int
+ blacklist_handler(vector strvec)
+ {
+-	conf->blist_devnode = vector_alloc();
+-	conf->blist_wwid = vector_alloc();
+-	conf->blist_device = vector_alloc();
++	if (!conf->blist_devnode)
++		conf->blist_devnode = vector_alloc();
++	if (!conf->blist_wwid)
++		conf->blist_wwid = vector_alloc();
++	if (!conf->blist_device)
++		conf->blist_device = vector_alloc();
+ 
+ 	if (!conf->blist_devnode || !conf->blist_wwid || !conf->blist_device)
+ 		return 1;
+@@ -733,9 +770,12 @@ blacklist_handler(vector strvec)
+ static int
+ blacklist_exceptions_handler(vector strvec)
+ {
+-	conf->elist_devnode = vector_alloc();
+-	conf->elist_wwid = vector_alloc();
+-	conf->elist_device = vector_alloc();
++	if (!conf->elist_devnode)
++		conf->elist_devnode = vector_alloc();
++	if (!conf->elist_wwid)
++		conf->elist_wwid = vector_alloc();
++	if (!conf->elist_device)
++		conf->elist_device = vector_alloc();
+ 
+ 	if (!conf->elist_devnode || !conf->elist_wwid || !conf->elist_device)
+ 		return 1;
+@@ -1400,7 +1440,8 @@ hw_reload_readwrite_handler(vector strve
+ static int
+ multipaths_handler(vector strvec)
+ {
+-	conf->mptable = vector_alloc();
++	if (!conf->mptable)
++		conf->mptable = vector_alloc();
+ 
+ 	if (!conf->mptable)
+ 		return 1;
+@@ -2726,6 +2767,16 @@ snprint_def_force_sync(char * buff, int 
+ 		return snprintf(buff, len, "no");
+ }
+ 
++
++static int
++snprint_def_config_dir (char * buff, int len, void * data)
++{
++	if (!conf->config_dir)
++		return 0;
++
++	return snprintf(buff, len, "\"%s\"", conf->config_dir);
++}
++
+ static int
+ snprint_ble_simple (char * buff, int len, void * data)
+ {
+@@ -2789,6 +2840,7 @@ init_keywords(void)
+ 	install_keyword("reload_readwrite", &def_reload_readwrite_handler, &snprint_def_reload_readwrite);
+ 	install_keyword("replace_wwid_whitespace", &def_replace_wwid_whitespace_handler, &snprint_def_replace_wwid_whitespace);
+ 	install_keyword("force_sync", &def_force_sync_handler, &snprint_def_force_sync);
++	install_keyword("config_dir", &def_config_dir_handler, &snprint_def_config_dir);
+ 	__deprecated install_keyword("mode", &def_mode_handler, &snprint_def_mode);
+ 	__deprecated install_keyword("uid", &def_uid_handler, &snprint_def_uid);
+ 	__deprecated install_keyword("gid", &def_gid_handler, &snprint_def_gid);
+Index: multipath-tools/libmultipath/parser.h
+===================================================================
+--- multipath-tools.orig/libmultipath/parser.h
++++ multipath-tools/libmultipath/parser.h
+@@ -76,7 +76,8 @@ extern int read_line(char *buf, int size
+ extern vector read_value_block(void);
+ extern int alloc_value_block(vector strvec, void (*alloc_func) (vector));
+ extern void *set_value(vector strvec);
+-extern int process_stream(vector keywords);
++extern int process_stream(vector keywords, char *file);
++void process_config_dir(vector keywords, char *dir);
+ extern int init_data(char *conf_file, void (*init_keywords) (void));
+ extern struct keyword * find_keyword(vector v, char * name);
+ void set_current_keywords (vector *k);
+Index: multipath-tools/libmultipath/config.c
+===================================================================
+--- multipath-tools.orig/libmultipath/config.c
++++ multipath-tools/libmultipath/config.c
+@@ -515,8 +515,15 @@ free_config (struct config * conf)
+ 	if (conf->prio_name)
+ 		FREE(conf->prio_name);
+ 
++	if (conf->prio_args)
++		FREE(conf->prio_args);
++
+ 	if (conf->checker_name)
+ 		FREE(conf->checker_name);
++
++	if (conf->config_dir)
++		FREE(conf->config_dir);
++
+ 	if (conf->reservation_key)
+ 		FREE(conf->reservation_key);
+ 
+@@ -565,6 +572,7 @@ load_config (char * file)
+ 	conf->reload_readwrite = DEFAULT_RELOAD_RW;
+ 	conf->replace_wwid_whitespace = 0;
+ 	conf->force_sync = 0;
++	conf->processed_main_config = 0;
+ 
+ 	/*
+ 	 * preload default hwtable
+@@ -604,6 +612,11 @@ load_config (char * file)
+ 			goto out;
+ 		}
+ 	}
++	conf->processed_main_config = 1;
++	if (conf->config_dir == NULL)
++		conf->config_dir = set_default(DEFAULT_CONFIG_DIR);
++	if (conf->config_dir && conf->config_dir[0] != '\0')
++		process_config_dir(conf->keywords, conf->config_dir);
+ 	hwtable_size = VECTOR_SIZE(conf->hwtable);
+ 	if (setup_default_hwtable(conf->hwtable))
+ 		goto out;
+Index: multipath-tools/libmultipath/config.h
+===================================================================
+--- multipath-tools.orig/libmultipath/config.h
++++ multipath-tools/libmultipath/config.h
+@@ -111,6 +111,7 @@ struct config {
+ 	int reload_readwrite;
+ 	int replace_wwid_whitespace;
+ 	int force_sync;
++	int processed_main_config;
+ 
+ 	char * dev;
+ 	char * sysfs_dir;
+@@ -124,6 +125,7 @@ struct config {
+ 	char * prio_name;
+ 	char * prio_args;
+ 	char * checker_name;
++	char * config_dir;
+ 	unsigned char * reservation_key;
+ 
+ 	vector keywords;
+Index: multipath-tools/libmultipath/defaults.h
+===================================================================
+--- multipath-tools.orig/libmultipath/defaults.h
++++ multipath-tools/libmultipath/defaults.h
+@@ -28,5 +28,6 @@
+ #define DEFAULT_CONFIGFILE	"/etc/multipath.conf"
+ #define DEFAULT_BINDINGS_FILE	"/etc/multipath/bindings"
+ #define DEFAULT_WWIDS_FILE	"/etc/multipath/wwids"
++#define DEFAULT_CONFIG_DIR	"/etc/multipath/conf.d"
+ 
+ char * set_default (char * str);
+Index: multipath-tools/multipath.conf.annotated
+===================================================================
+--- multipath-tools.orig/multipath.conf.annotated
++++ multipath-tools/multipath.conf.annotated
+@@ -347,6 +347,16 @@
+ #	# values  : yes|no
+ #	# default : no
+ #	force_sync yes
++#
++#	#
++#	# name    : config_dir
++#	# scope   : multipath & multipathd
++#	# desc    : If not set to an empty string, multipath will search
++#	#           this directory alphabetically for files ending in ".conf"
++#	#           and it will read configuration information from these
++#	#           files, just as if it was in /etc/multipath.conf
++#	# values  : "" or a fully qualified pathname
++#	# default : "/etc/multipath/conf.d"
+ #}
+ #	
+ ##
+Index: multipath-tools/multipath.conf.defaults
+===================================================================
+--- multipath-tools.orig/multipath.conf.defaults
++++ multipath-tools/multipath.conf.defaults
+@@ -26,6 +26,7 @@
+ #	log_checker_err always
+ #	reload_readwrite no
+ #	replace_wwid_whitespace
++#	config_dir "/etc/multipath/conf.d"
+ #}
+ #blacklist {
+ #	devnode "^(ram|raw|loop|fd|md|dm-|sr|scd|st)[0-9]*"
+Index: multipath-tools/multipath/multipath.conf.5
+===================================================================
+--- multipath-tools.orig/multipath/multipath.conf.5
++++ multipath-tools/multipath/multipath.conf.5
+@@ -441,6 +441,13 @@ only one checker will run at a time.  Th
+ multipathd checkers running in parallel causes significant CPU pressure. The
+ Default is
+ .I no
++.TP
++.B config_dir
++If set to anything other than "", multipath will search this directory
++alphabetically for file ending in ".conf" and it will read configuration
++information from them, just as if it was in /etc/multipath.conf.  config_dir
++must either be "" or a fully qualified directory name. Default is
++.I "/etc/multipath/conf.d"
+ .
+ .SH "blacklist section"
+ The

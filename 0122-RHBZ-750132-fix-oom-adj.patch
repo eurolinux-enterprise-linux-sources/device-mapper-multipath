@@ -1,0 +1,78 @@
+From a17645bbff1a40ed95a78a9927367d8e3af16ba7 Mon Sep 17 00:00:00 2001
+From: Prem Karat <prem.karat@linux.vnet.ibm.com>
+Date: Thu, 13 Oct 2011 15:44:31 +0530
+Subject: [PATCH 1/1] Backport of commit 82c18472716876a4840dd15e4585674
+
+The oom_adj procfs interface is deprecated. I've added support for using the new oom_score_adj interface.
+The code still falls back to using oom_adj if oom_score_adj doesn't exist.
+
+Signed-off-by: Prem Karat <prem.karat@linux.vnet.ibm.com>
+---
+ multipathd/main.c |   37 ++++++++++++++++++++++++++++---------
+ 1 file changed, 28 insertions(+), 9 deletions(-)
+
+Index: multipath-tools/multipathd/main.c
+===================================================================
+--- multipath-tools.orig/multipathd/main.c
++++ multipath-tools/multipathd/main.c
+@@ -15,6 +15,7 @@
+ #include <sys/time.h>
+ #include <sys/resource.h>
+ #include <limits.h>
++#include <linux/oom.h>
+ 
+ /*
+  * libcheckers
+@@ -1412,17 +1413,35 @@ setscheduler (void)
+ }
+ 
+ static void
+-set_oom_adj (int val)
++set_oom_adj (void)
+ {
++	int retry = 1;
++	char *file = "/proc/self/oom_score_adj";
++	int score = OOM_SCORE_ADJ_MIN;
+ 	FILE *fp;
++	struct stat st;
+ 
+-	fp = fopen("/proc/self/oom_adj", "w");
+-
+-	if (!fp)
+-		return;
+-
+-	fprintf(fp, "%i", val);
+-	fclose(fp);
++	do {
++		if (stat(file, &st) == 0){
++			fp = fopen(file, "w");
++			if (!fp) {
++				condlog(0, "couldn't fopen %s : %s", file,
++					strerror(errno));
++				return;
++			}
++			fprintf(fp, "%i", score);
++			fclose(fp);
++			return;
++		}
++		if (errno != ENOENT) {
++			condlog(0, "couldn't stat %s : %s", file,
++				strerror(errno));
++			return;
++		}
++		file = "/proc/self/oom_adj";
++		score = OOM_ADJUST_MIN;
++	} while (retry--);
++	condlog(0, "couldn't adjust oom score");
+ }
+ 
+ static int
+@@ -1490,7 +1509,7 @@ child (void * param)
+ 	}
+ 	signal_init();
+ 	setscheduler();
+-	set_oom_adj(-16);
++	set_oom_adj();
+ 	vecs = gvecs = init_vecs();
+ 
+ 	if (!vecs)

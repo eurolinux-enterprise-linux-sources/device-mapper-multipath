@@ -1,0 +1,84 @@
+---
+ multipath/main.c      |   17 +++++++++++++++--
+ multipath/multipath.8 |    5 ++++-
+ 2 files changed, 19 insertions(+), 3 deletions(-)
+
+Index: multipath-tools/multipath/main.c
+===================================================================
+--- multipath-tools.orig/multipath/main.c
++++ multipath-tools/multipath/main.c
+@@ -83,7 +83,7 @@ usage (char * progname)
+ {
+ 	fprintf (stderr, VERSION_STRING);
+ 	fprintf (stderr, "Usage:\n");
+-	fprintf (stderr, "  %s [-c|-w|-W] [-d] [-r] [-v lvl] [-p pol] [-b fil] [-q] [dev]\n", progname);
++	fprintf (stderr, "  %s [-a|-c|-w|-W] [-d] [-r] [-v lvl] [-p pol] [-b fil] [-q] [dev]\n", progname);
+ 	fprintf (stderr, "  %s -l|-ll|-f [-v lvl] [-b fil] [dev]\n", progname);
+ 	fprintf (stderr, "  %s -F [-v lvl]\n", progname);
+ 	fprintf (stderr, "  %s -h\n", progname);
+@@ -95,6 +95,7 @@ usage (char * progname)
+ 		"  -ll     show multipath topology (maximum info)\n" \
+ 		"  -f      flush a multipath device map\n" \
+ 		"  -F      flush all multipath device maps\n" \
++		"  -a      add a device wwid to the wwids file\n" \
+ 		"  -c      check if a device should be a path in a multipath device\n" \
+ 		"  -q      allow queue_if_no_path when multipathd is not running\n"\
+ 		"  -d      dry run, do not create or update devmaps\n" \
+@@ -285,6 +286,15 @@ configure (void)
+ 			}
+ 			goto out;
+ 		}
++		if (conf->dry_run == 5) {
++			r = remember_wwid(refwwid);
++			if (r == 0)
++				printf("wwid '%s' added\n", refwwid);
++			else
++				printf("failed adding '%s' to wwids file\n",
++					refwwid);
++			goto out;
++		}
+ 		condlog(3, "scope limited to %s", refwwid);
+ 		if (conf->dev_type == DEV_DEVNODE ||
+ 		    conf->dev_type == DEV_DEVT) {
+@@ -433,7 +443,7 @@ main (int argc, char *argv[])
+ 		condlog(0, "multipath tools need sysfs mounted");
+ 		exit(1);
+ 	}
+-	while ((arg = getopt(argc, argv, ":dchl::FfM:v:p:b:BrquwW")) != EOF ) {
++	while ((arg = getopt(argc, argv, ":adchl::FfM:v:p:b:BrquwW")) != EOF ) {
+ 		switch(arg) {
+ 		case 1: printf("optarg : %s\n",optarg);
+ 			break;
+@@ -500,6 +510,9 @@ main (int argc, char *argv[])
+ 		case 'W':
+ 			conf->dry_run = 4;
+ 			break;
++		case 'a':
++			conf->dry_run = 5;
++			break;
+ 		case 'h':
+ 			usage(argv[0]);
+ 			exit(0);
+Index: multipath-tools/multipath/multipath.8
+===================================================================
+--- multipath-tools.orig/multipath/multipath.8
++++ multipath-tools/multipath/multipath.8
+@@ -6,7 +6,7 @@ multipath \- Device mapper target autoco
+ .RB [\| \-v\ \c
+ .IR verbosity \|]
+ .RB [\| \-d \|]
+-.RB [\| \-h | \-l | \-ll | \-f | \-F | \-B | \-w | \-W \|]
++.RB [\| \-h | \-l | \-ll | \-f | \-F | \-B | \-a | \-w | \-W \|]
+ .RB [\| \-p\ \c
+ .BR failover | multibus | group_by_serial | group_by_prio | group_by_node_name \|]
+ .RB [\| device \|]
+@@ -56,6 +56,9 @@ treat the bindings file as read only
+ .B \-c
+ check if the specified path device is or should be multipathed
+ .TP
++.B \-a
++add the wwid for the specified device to the wwids file
++.TP
+ .B \-w
+ remove the wwid for the specified device from the wwids file
+ .TP

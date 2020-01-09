@@ -1,0 +1,63 @@
+---
+ multipathd/multipathd.8 |   27 +++++++++++++++++++++++----
+ 1 file changed, 23 insertions(+), 4 deletions(-)
+
+Index: multipath-tools/multipathd/multipathd.8
+===================================================================
+--- multipath-tools.orig/multipathd/multipathd.8
++++ multipath-tools/multipathd/multipathd.8
+@@ -45,6 +45,9 @@ Show the number of monitored paths in ea
+ .B list|show maps|multipaths
+ Show the multipath devices that the multipathd is monitoring. 
+ .TP
++.B list|show daemon
++Show the current state of the multipathd daemon
++.TP
+ .B list|show maps|multipaths format $format
+ Show the status of all multipath devices that the multipathd is monitoring,
+ using a format string with multipath format wildcards.
+@@ -87,16 +90,16 @@ Stop monitoring a path. $path is as list
+ Show the number of monitored paths, and whether multipathd is currently
+ handeling a uevent.
+ .TP
+-.B add map $map
++.B add map|multipath $map
+ Add a multipath device to the list of monitored devices. $map can either be a device-mapper device as listed in /sys/block (e.g. dm-0) or it can be the alias for the multipath device (e.g. mpath1) or the uid of the multipath device (e.g. 36005076303ffc56200000000000010aa). 
+ .TP
+-.B remove|del map $map
++.B remove|del map|multipath $map
+ Stop monitoring a multipath device.
+ .TP
+ .B resize map|multipath $map
+ Resizes map $map to the given size
+ .TP 
+-.B switch|switchgroup map $map group $group
++.B switch|switchgroup map|multipath $map group $group
+ Force a multipath device to switch to a specific path group. $group is the path group index, starting with 1.
+ .TP
+ .B reconfigure
+@@ -124,7 +127,23 @@ Restore queueing on all multipath device
+ Disable queuing on multipathed map $map
+ .TP
+ .B restorequeueing map|multipath $map
+-Restore queuing on multipahted map $map
++Restore queuing on multipathed map $map
++.TP
++.B forcequeueing daemon
++Forces multipathd into queue_without_daemon mode, so that no_path_retry queueing
++will not be disabled when the daemon stops
++.TP
++.B restorequeueing daemon
++Restores configured queue_without_daemon mode
++.TP
++.B map|multipath $map setprstatus
++Enable persistent reservation management on $map
++.TP
++.B map|multipath $map unsetprstatus
++Disable persistent reservation management on $map
++.TP
++.B map|multipath $map getprstatus
++Get the current persistent reservation management status of $map
+ .TP
+ .B quit|exit
+ End interactive session.

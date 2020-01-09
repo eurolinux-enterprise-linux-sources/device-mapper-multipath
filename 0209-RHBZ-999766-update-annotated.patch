@@ -1,0 +1,453 @@
+---
+ multipath.conf.annotated |  319 +++++++++++++++++++----------------------------
+ 1 file changed, 135 insertions(+), 184 deletions(-)
+
+Index: multipath-tools/multipath.conf.annotated
+===================================================================
+--- multipath-tools.orig/multipath.conf.annotated
++++ multipath-tools/multipath.conf.annotated
+@@ -9,6 +9,14 @@
+ ##
+ #defaults {
+ #	#
++#	# name    : verbosity
++#	# scope   : multipath & multipathd
++#	# desc    : The logging verbosity
++#	# values  : 0 <= n <= 4
++#	# default : 2
++#	verbosity	3
++#
++#	#
+ #	# name    : udev_dir
+ #	# desc    : directory where udev creates its device nodes
+ #	# default : /dev
+@@ -27,6 +35,14 @@
+ #	polling_interval 10
+ #
+ #	#
++#	# name    : multipath_dir
++#	# scope   : multipath & multipathd
++#	# desc    : directory for multipath prio and checker DSOs
++#	# value   : (pathname)
++#	# default : /lib/multipath (32bit) or /lib64/multipath (64 bit)
++#	multipath_dir "/lib64/multipath"
++#
++#	#
+ #	# name    : path_selector
+ #	# scope   : multipath
+ #	# desc    : the default path selector algorithm to use
+@@ -83,10 +99,21 @@
+ #	# desc    : The default extra features of multipath devices. The
+ #	#           only existing feature currently is queue_if_no_path, which
+ #	#           is the same as setting no_path_retry to queue.
+-#	# values  : "1 queue_if_no_path"
++#	# values  : "(number_of_features_plus_arguments) (feature1) ..."
++#	#           queue_if_no_path		queue IO when no active path
++#	#                                       exists
++#	#           retain_attached_hw_handler  if a scsi hardware handler is
++#	#                                       already attached to the device,
++#	#                                       use it.
++#	#           pg_init_retries <n>         Retry path group initialization
++#	#                                       up to <n> times before failing
++#	#                                       where 1 <= n <= 50
++#	#           pg_init_delay_msecs <n>     Wait <n> seconds between
++#	#                                       path group initialization
++#	#                                       retries where 0 <= n <= 60000
+ #	# default : (null)
+ #	#
+-#	features	"1 queue_if_no_path"
++#	features	"3 queue_if_no_path pg_init_retries 5"
+ #
+ #	#
+ #	# name    : path_checker, checker
+@@ -156,8 +183,10 @@
+ #	# scope   : multipathd
+ #	# desc    : tell the daemon to manage path group failback, or not to.
+ #	#	    0 means immediate failback, values >0 means deffered
+-#	#           failback expressed in seconds.
+-#	# values  : manual|immediate|n > 0
++#	#           failback expressed in seconds. followever is like
++#	#           immediate, but it only occurs when the first path in a
++#	#           failed pathgroup becomes valid.
++#	# values  : manual|immediate|followover|n > 0
+ #	# default : manual
+ #	#
+ #	failback	immediate
+@@ -240,6 +269,53 @@
+ #	hwtable_regex_match yes
+ #
+ #	#
++#	# name    : reservation_key
++#	# scope   : multipathd
++#	# desc    : the service action reservation key used by mpathpersist.
++#	# values  : <64bit hexidecimal string>
++#	# default : (null)
++#	reservation_key 0x24ea8fe3
++#
++#	#
++#	# name    : find_multipaths
++#	# scope   : multipath & mutipathd
++#	# desc    : If set to yes, multipath will only create multipath devices
++#	#           when there are actually multiple paths to a device.
++#	# values  : yes|np
++#	# default : no
++#	find_multipaths yes
++#
++#	#
++#	# name    : log_checker_err
++#	# scope   : multipathd
++#	# desc    : sets how many times to log repeated checker error at the
++#	#           default logging level (2).  All subsequent errors will be
++#	#           at the debug logging level (3), until the path is restored
++#	# values  : once|always
++#	# default : always
++#	log_checker_err once
++#
++#	#
++#	# name    : retain_attached_hw_handler
++#	# scope   : multipath & multipathd
++#	# desc    : if set to yes and a path device already has a scsi
++#	#           hardware handler attached, multipath will use that for
++#	#           the multipath device, instead selecting a new one
++#	# values  : yes|no
++#	# default : no
++#	retain_attached_hw_handler yes
++#
++#	#
++#	# name    : detect_prio
++#	# scope   : multipath & multipathd
++#	# desc    : if set to yes, multipath will try to detect if the device
++#	#           supports ALUA. If so, multipath will use the alua
++#	#           prioritizer, instead of the configured one.
++#	# values  : yes|no
++#	# default : no
++#	detect_prio yes
++#
++#	#
+ #	# name    : reload_readwrite
+ #	# scope   : multipathd
+ #	# desc    : If set to yes, multipathd will monitor change events on
+@@ -331,87 +407,43 @@
+ #
+ #		#
+ #		# name    : path_grouping_policy
+-#		# scope   : multipath
+-#		# desc    : path grouping policy to apply to this multipath
+-#		# values  : failover, multibus, group_by_serial
+-#		# values  : failover           = 1 path per priority group
+-#		#           multibus           = all valid paths in 1 priority
+-#		#                                group
+-#		#           group_by_serial    = 1 priority group per detected
+-#		#                                serial number
+-#		#           group_by_prio      = 1 priority group per path
+-#		#                                priority value
+-#		#           group_by_node_name = 1 priority group per target
+-#		#                                node name
+-#		#
+-#		path_grouping_policy	failover
++#		# See defaults section for information.
+ #
+ #		#
+ #		# name    : path_selector
+-#		# desc    : the path selector algorithm to use for this mpath
+-#		#           these algo are offered by the kernel mpath target
+-#		# values  : "round-robin 0"
+-#		#
+-#		path_selector		"round-robin 0"
++#		# See defaults section for information.
+ #
+ #		#
+ #		# name    : failback
+-#		# scope   : multipathd
+-#		# desc    : tell the daemon to manage path group failback, or
+-#		#	    not to. 0 means immediate failback, values >0 means
+-#		#	    deffered failback expressed in seconds.
+-#		# values  : manual|immediate|n > 0
++#		# See defaults section for information.
++#
+ #		#
+-#		failback		manual
++#		# name    : prio
++#		# See defaults section for information.
+ #
+ #		#
+ #		# name    : rr_weight
+-#		# scope   : multipath
+-#		# desc    : if set to priorities the multipath configurator will
+-#		#	    assign path weights as "path prio * rr_min_io"
+-#		# values  : priorities|uniform
+-#		#
+-#		rr_weight	priorities
++#		# See defaults section for information.
+ #
+ #		#
+ #		# name    : no_path_retry
+-#		# scope   : multipath & multipathd
+-#		# desc    : tell the number of retries until disable queueing,
+-#		#           or "fail" means immediate failure (no queueing),
+-#		#           "queue" means never stop queueing
+-#		# values  : queue|fail|n (>0)
+-#		#
+-#		no_path_retry  queue
++#		# See defaults section for information.
+ #
+ #		#
+ #		# name    : rr_min_io
+-#		# scope   : multipath
+-#		# desc    : the number of IO to route to a path before switching
+-#		#           to the next in the same path group
+-#		#
+-#		rr_min_io	100
++#		# See defaults section for information.
+ #
+ #		#
+ #		# name    : rr_min_io_rq
+-#		# scope   : multipath
+-#		# desc    : The number of IO to route to a path before switching
+-#		#           to the next in the same path group, using
+-#		#           request-based device-mapper-multipath. This setting
+-#		#           should be used on systems running current kernels.
+-#		#           On systems running kernels older than 2.6.31, use
+-#		#           rr_min_io.
+-#		#
+-#		rr_min_io_rq	10
++#		# See defaults section for information.
+ #
+ #		#
+ #		# name    : flush_on_last_del
+-#		# scope   : multipathd
+-#		# desc    : If set to "yes", multipathd will disable queueing
+-#		#           when the last path to a device has been deleted.
+-#		# values  : yes|no
+-#		# default : no
++#		# See defaults section for information.
++#
+ #		#
+-#		flush_on_last_del       yes
++#		# name    : reservation_key
++#		# See defaults section for information.
+ #
+ #	}
+ #	multipath {
+@@ -436,180 +468,99 @@
+ #	#
+ #	device {
+ #		#
+-#		# name  : vendor, product
++#		# name  : vendor, product, revision
+ #		# scope : multipath & multipathd
+ #		# desc  : index for the block
+ #		#
+ #		vendor			"COMPAQ  "
+ #		product			"HSV110 (C)COMPAQ"
++#		revision		"347G"
+ #
+ #		#
+-#		# name    : path_grouping_policy
++#		# name    : hardware_handler
+ #		# scope   : multipath
+-#		# desc    : path grouping policy to apply to this multipath
+-#		# values  : failover, multibus, group_by_serial
+-#		# values  : failover           = 1 path per priority group
+-#		#           multibus           = all valid paths in 1 priority
+-#		#                                group
+-#		#           group_by_serial    = 1 priority group per detected
+-#		#                                serial number
+-#		#           group_by_prio      = 1 priority group per path
+-#		#                                priority value
+-#		#           group_by_node_name = 1 priority group per target
+-#		#                                node name
++#		# desc    : If set, it specifies a module that will be used to
++#		#           perform hardware specific actions when switching
++#		#	    path groups or handling IO errors
++#		# values  : "0"|"1 emc"
++#		# default : "0"
+ #		#
+-#		path_grouping_policy	failover
++#		hardware_handler "1 emc"
+ #
+ #		#
+-#		# name    : getuid_callout
+-#		# scope   : multipath
+-#		# desc    : the program and args to callout to obtain a unique 
+-#		#           path identifier. Absolute path required
++#		# name    : product_blacklist
++#		# scope   : multipath & multipathd
++#		# desc    : product strings to blacklist for this vendor
+ #		#
+-#		getuid_callout          "/lib/udev/scsi_id --whitelisted --device=/dev/%n"
++#		product_blacklist	LUN_Z
+ #
+ #		#
+-#		# name    : prio
+-#		# scope   : multipath
+-#		# desc    : the function to call to obtain a path 
+-#		#           weight. Weights are summed for each path group to
+-#		#	    determine the next PG to use case of failure.
+-#		# default : no callout, all paths equals
++#		# name    : path_grouping_policy
++#		# See defaults section for information.
++#
+ #		#
+-#		prio          "hp_sw"
++#		# name    : getuid_callout
++#		# See defaults section for information.
+ #
+ #		#
+-#		# name    : path_checker, checker
+-#		# scope   : multipathd
+-#		# desc    : path checking algorithm to use to check path state
+-#		# values  : readsector0|tur|emc_clariion|hp_sw|directio|rdac|
+-#		#           cciss_tur|hp_tur
++#		# name    : prio
++#		# See defaults section for information.
++#
+ #		#
+-#		path_checker		directio
++#		# name    : path_checker, checker
++#		# See defaults section for information.
+ #
+ #		#
+ #		# name    : path_selector
+-#		# desc    : the path selector algorithm to use for this mpath
+-#		#           these algo are offered by the kernel mpath target
+-#		# values  : "round-robin 0"
+-#		#
+-#		path_selector		"round-robin 0"
++#		# See defaults section for information.
+ #
+ #		#
+ #		# name    : features
+-#		# scope   : multipath
+-#		# desc    : The extra features of multipath devices. The only
+-#		#           existing feature currently is queue_if_no_path,
+-#		#           which is the same as setting no_path_retry to queue.
+-#		# values  : "1 queue_if_no_path"
+-#		#
+-#		features	"1 queue_if_no_path"
+-#
+-#		#
+-#		# name    : hardware_handler
+-#		# scope   : multipath
+-#		# desc    : If set, it specifies a module that will be used to
+-#		#           perform hardware specific actions when switching
+-#		#	    path groups or handling IO errors
+-#		# values  : "0"|"1 emc"
+-#		# default : "0"
+-#		#
+-#		hardware_handler "1 emc"
++#		# See defaults section for information.
+ #
+ #		#
+ #		# name    : failback
+-#		# scope   : multipathd
+-#		# desc    : tell the daemon to manage path group failback, or
+-#		#	    not to. 0 means immediate failback, values >0 means
+-#		#	    deffered failback expressed in seconds.
+-#		# values  : manual|immediate|n > 0
+-#		#
+-#		failback		30
++#		# See defaults section for information.
+ #
+ #		#
+ #		# name    : rr_weight
+-#		# scope   : multipath
+-#		# desc    : if set to priorities the multipath configurator will
+-#		#           assign path weights as "path prio * rr_min_io"
+-#		# values  : priorities|uniform
+-#		#
+-#		rr_weight	priorities
++#		# See defaults section for information.
+ #
+ #		#
+ #		# name    : no_path_retry
+-#		# scope   : multipath & multipathd
+-#		# desc    : tell the number of retries until disable queueing,
+-#		#           or "fail" means immediate failure (no queueing),
+-#		#           "queue" means never stop queueing
+-#		# values  : queue|fail|n (>0)
+-#		#
+-#		no_path_retry  queue
++#		# See defaults section for information.
+ #
+ #		#
+ #		# name    : rr_min_io
+-#		# scope   : multipath
+-#		# desc    : the number of IO to route to a path before switching
+-#		#           to the next in the same path group
+-#		#
+-#		rr_min_io	100
++#		# See defaults section for information.
+ #
+ #		#
+ #		# name    : rr_min_io_rq
+-#		# scope   : multipath
+-#		# desc    : The number of IO to route to a path before switching
+-#		#           to the next in the same path group, using
+-#		#           request-based device-mapper-multipath. This setting
+-#		#           should be used on systems running current kernels.
+-#		#           On systems running kernels older than 2.6.31, use
+-#		#           rr_min_io.
+-#		#
+-#		rr_min_io_rq	10
++#		# See defaults section for information.
+ #
+ #		#
+ #		# name    : flush_on_last_del
+-#		# scope   : multipathd
+-#		# desc    : If set to "yes", multipathd will disable queueing
+-#		#           when the last path to a device has been deleted.
+-#		# values  : yes|no
+-#		#
+-#		flush_on_last_del       yes
++#		# See defaults section for information.
+ #
+ #		#
+-#		# name    : product_blacklist
+-#		# scope   : multipath & multipathd
+-#		# desc    : product strings to blacklist for this vendor
++#		# name    : fast_io_fail_tmo
++#		# See defaults section for information.
++#
+ #		#
+-#		product_blacklist	LUN_Z
++#		# name    : dev_loss_tmo
++#		# See defaults section for information.
+ #
+ #		#
+-#		# name    : fast_io_fail_tmo
+-#		# scope   : multipath & multipathd
+-#		# desc    : The number of seconds the scsi layer will wait after
+-#		#           a problem has been detected on a FC remote port
+-#		#           before failing IO to devices on that remote port.
+-#		# values  : off | n >= 0 (smaller than dev_loss_tmo)
+-#		fast_io_fail_tmo 5
++#		# name    : retain_attached_hw_handler
++#		# See defaults section for information.
+ #
+ #		#
+-#		# name    : dev_loss_tmo
+-#		# scope   : multipath & multipathd
+-#		# desc    : The number of seconds the scsi layer will wait after
+-#		#           a problem has been detected on a FC remote port
+-#		#           before removing it from the system.
+-#		# values  : n > 0
+-#		dev_loss_tmo 600
++#		# name    : detect_prio
++#		# See defaults section for information.
+ #
+ #		#
+ #		# name    : reload_readwrite
+-#		# scope   : multipathd
+-#		# desc    : If set to yes, multipathd will monitor change events
+-#		#           on path devices.  When it receives a change event
+-#		#           for a path of a readonly multipath device, it will
+-#		#           check if the path is now read/write.  If so,
+-#		#           multipathd will reload the multipath device to
+-#		#           switch it to read/write.
+-#		# values  : yes|no
+-#		reload_readwrite yes
++#		# See defaults section for information.
+ #
+ #	}
+ #	device {

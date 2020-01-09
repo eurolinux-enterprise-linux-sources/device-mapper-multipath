@@ -1,0 +1,70 @@
+---
+ libmultipath/uevent.h |    2 ++
+ libmultipath/waiter.c |    1 +
+ multipathd/main.c     |    6 +++++-
+ 3 files changed, 8 insertions(+), 1 deletion(-)
+
+Index: multipath-tools/libmultipath/uevent.h
+===================================================================
+--- multipath-tools.orig/libmultipath/uevent.h
++++ multipath-tools/libmultipath/uevent.h
+@@ -15,6 +15,8 @@ struct uevent {
+ 	char *envp[HOTPLUG_NUM_ENVP];
+ };
+ 
++extern pthread_t uevq_thr;
++
+ int uevent_listen(int (*store_uev)(struct uevent *, void * trigger_data),
+ 		  void * trigger_data);
+ int is_uevent_busy(void);
+Index: multipath-tools/libmultipath/waiter.c
+===================================================================
+--- multipath-tools.orig/libmultipath/waiter.c
++++ multipath-tools/libmultipath/waiter.c
+@@ -161,6 +161,7 @@ int waiteventloop (struct event_thread *
+ 		 */
+ 		pthread_cleanup_push(cleanup_lock, &waiter->vecs->lock);
+ 		lock(waiter->vecs->lock);
++		pthread_testcancel();
+ 		r = update_multipath(waiter->vecs, waiter->mapname, 1);
+ 		lock_cleanup_pop(waiter->vecs->lock);
+ 
+Index: multipath-tools/multipathd/main.c
+===================================================================
+--- multipath-tools.orig/multipathd/main.c
++++ multipath-tools/multipathd/main.c
+@@ -644,6 +644,7 @@ uxsock_trigger (char * str, char ** repl
+ 
+ 	pthread_cleanup_push(cleanup_lock, &vecs->lock);
+ 	lock(vecs->lock);
++	pthread_testcancel();
+ 
+ 	r = parse_cmd(str, reply, len, vecs);
+ 
+@@ -697,7 +698,9 @@ uev_trigger (struct uevent * uev, void *
+ 	if (uev_discard(uev->devpath))
+ 		return 0;
+ 
++	pthread_cleanup_push(cleanup_lock, &vecs->lock);
+ 	lock(vecs->lock);
++	pthread_testcancel();
+ 
+ 	sysdev = sysfs_device_get(uev->devpath);
+ 	if(!sysdev)
+@@ -741,7 +744,7 @@ uev_trigger (struct uevent * uev, void *
+ 	}
+ 
+ out:
+-	unlock(vecs->lock);
++	lock_cleanup_pop(vecs->lock);
+ 	return r;
+ }
+ 
+@@ -1558,6 +1561,7 @@ child (void * param)
+ 
+ 	pthread_cancel(check_thr);
+ 	pthread_cancel(uevent_thr);
++	pthread_cancel(uevq_thr);
+ 	pthread_cancel(uxlsnr_thr);
+ 
+ 	sysfs_cleanup();

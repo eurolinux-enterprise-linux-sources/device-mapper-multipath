@@ -1,0 +1,18 @@
+---
+ libmultipath/configure.c |    3 +++
+ 1 file changed, 3 insertions(+)
+
+Index: multipath-tools/libmultipath/configure.c
+===================================================================
+--- multipath-tools.orig/libmultipath/configure.c
++++ multipath-tools/libmultipath/configure.c
+@@ -420,6 +420,9 @@ select_action (struct multipath * mpp, v
+ 		condlog(2, "%s: unable to rename %s to %s (%s is used by %s)",
+ 			mpp->wwid, cmpp_tmp->alias, mpp->alias,
+ 			mpp->alias, cmpp->wwid);
++		/* reset alias to existing alias */
++		FREE(mpp->alias);
++		mpp->alias = STRDUP(cmpp->alias);
+ 		mpp->action = ACT_NOTHING;
+ 		return;
+ 	}

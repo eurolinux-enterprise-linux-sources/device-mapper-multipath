@@ -1,0 +1,140 @@
+---
+ multipath.conf.annotated   |   45 ++++++++++++++++++++++++++++++++++++++++++---
+ multipath/multipath.conf.5 |   19 +++++++++++++++++--
+ 2 files changed, 59 insertions(+), 5 deletions(-)
+
+Index: multipath-tools/multipath.conf.annotated
+===================================================================
+--- multipath-tools.orig/multipath.conf.annotated
++++ multipath-tools/multipath.conf.annotated
+@@ -96,12 +96,26 @@
+ #	# name    : rr_min_io
+ #	# scope   : multipath
+ #	# desc    : the number of IO to route to a path before switching
+-#	#           to the next in the same path group
++#	#           to the next in the same path group. This setting is only
++#	#           for systems running kernels older that 2.6.31. Newer
++#	#           systems should use rr_min_io_rq.
+ #	# default : 1000
+ #	#
+ #	rr_min_io	100
+ #
+ #	#
++#	# name    : rr_min_io_rq
++#	# scope   : multipath
++#	# desc    : The number of IO to route to a path before switching to
++#	#           the next in the same path group, using request-based
++#	#           device-mapper-multipath. This setting should be used on
++#	#           systems running current kernels. On systems running kernels
++#	#           older than 2.6.31, use rr_min_io.
++#	# default : 1
++#	#
++#	rr_min_io_rq	10
++#
++#	#
+ #	# name    : flush_on_last_del
+ #	# scope   : multipathd
+ #	# desc    : If set to "yes", multipathd will disable queueing when the
+@@ -199,8 +213,9 @@
+ #	# scope   : multipath & multipathd
+ #	# desc    : The number of seconds the scsi layer will wait after a
+ #	#           problem has been detected on a FC remote port before
+-#	#           removing it from the system.
+-#	# values  : n > 0
++#	#           removing it from the system. Setting this to infinity
++#	#	    will set this to 2147483647 seconds, or 68 years.
++#	# values  : n > 0 | infinity
+ #	# default : determined by the OS
+ #	dev_loss_tmo 600
+ #}
+@@ -334,6 +349,18 @@
+ #		rr_min_io	100
+ #
+ #		#
++#		# name    : rr_min_io_rq
++#		# scope   : multipath
++#		# desc    : The number of IO to route to a path before switching
++#		#           to the next in the same path group, using
++#		#           request-based device-mapper-multipath. This setting
++#		#           should be used on systems running current kernels.
++#		#           On systems running kernels older than 2.6.31, use
++#		#           rr_min_io.
++#		#
++#		rr_min_io_rq	10
++#
++#		#
+ #		# name    : flush_on_last_del
+ #		# scope   : multipathd
+ #		# desc    : If set to "yes", multipathd will disable queueing
+@@ -484,6 +511,18 @@
+ #		rr_min_io	100
+ #
+ #		#
++#		# name    : rr_min_io_rq
++#		# scope   : multipath
++#		# desc    : The number of IO to route to a path before switching
++#		#           to the next in the same path group, using
++#		#           request-based device-mapper-multipath. This setting
++#		#           should be used on systems running current kernels.
++#		#           On systems running kernels older than 2.6.31, use
++#		#           rr_min_io.
++#		#
++#		rr_min_io_rq	10
++#
++#		#
+ #		# name    : flush_on_last_del
+ #		# scope   : multipathd
+ #		# desc    : If set to "yes", multipathd will disable queueing
+Index: multipath-tools/multipath/multipath.conf.5
+===================================================================
+--- multipath-tools.orig/multipath/multipath.conf.5
++++ multipath-tools/multipath/multipath.conf.5
+@@ -276,9 +276,18 @@ Default value is \fImanual\fR.
+ .TP
+ .B  rr_min_io
+ The number of IO to route to a path before switching to the next in
+-the same path group. Default is
++the same path group, using bio-based device-mapper-multipath. This
++is only for systems running kernels older that 2.6.31. Newer
++systems should use rr_min_io_rq. Default is
+ .I 1000
+ .TP
++.B rr_min_io_rq
++The number of IO to route to a path before switching to the next in
++the same path group, using request-based device-mapper-multipath.
++This setting should be used on systems running current kernels.
++On systems running kernels older than 2.6.31, use rr_min_io. Default is
++.I 1
++.TP
+ .B rr_weight
+ If set to \fIpriorities\fR the multipath configurator will assign
+ path weights as "path prio * rr_min_io". Possible values are
+@@ -344,7 +353,9 @@ will disable the timeout.
+ .TP
+ .B dev_loss_tmo
+ Specify the number of seconds the scsi layer will wait after a problem has
+-been detected on a FC remote port before removing it from the system.
++been detected on a FC remote port before removing it from the system. This
++can be set to "infinity" which sets it to the max value of 2147483647
++seconds, or 68 years.
+ .TP
+ .B log_checker_err
+ If set to
+@@ -442,6 +453,8 @@ section:
+ .TP
+ .B rr_min_io
+ .TP
++.B rr_min_io_rq
++.TP
+ .B rr_weight
+ .TP
+ .B flush_on_last_del
+@@ -517,6 +530,8 @@ section:
+ .TP
+ .B rr_min_io
+ .TP
++.B rr_min_io_rq
++.TP
+ .B fast_io_fail_tmo
+ .TP
+ .B dev_loss_tmo

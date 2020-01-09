@@ -1,0 +1,23 @@
+---
+ multipath.conf.annotated |    8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+Index: multipath-tools/multipath.conf.annotated
+===================================================================
+--- multipath-tools.orig/multipath.conf.annotated
++++ multipath-tools/multipath.conf.annotated
+@@ -31,7 +31,13 @@
+ #	# scope   : multipath
+ #	# desc    : the default path selector algorithm to use
+ #	#           these algorithms are offered by the kernel multipath target
+-#	# values  : "round-robin 0"
++#       # values  : "round-robin 0"  = Loop through every path in the path group,
++#       #                              sending the same amount of IO to each.
++#       #           "queue-length 0" = Send the next bunch of IO down the path
++#       #                              with the least amount of outstanding IO.
++#       #           "service-time 0" = Choose the path for the next bunch of IO
++#       #                              based on the amount of outstanding IO to
++#       #                              the path and its relative throughput.
+ #	# default : "round-robin 0"
+ #	#
+ #	path_selector	"round-robin 0"

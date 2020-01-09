@@ -1,0 +1,14 @@
+diff --git a/libmultipath/switchgroup.c b/libmultipath/switchgroup.c
+index 025a95d..031c3d7 100644
+--- a/libmultipath/switchgroup.c
++++ b/libmultipath/switchgroup.c
+@@ -20,7 +20,8 @@ path_group_prio_update (struct pathgroup * pgp)
+ 		return;
+ 	}
+ 	vector_foreach_slot (pgp->paths, pp, i) {
+-		if (pp->state != PATH_DOWN) {
++		if (pp->state == PATH_UP ||
++		    pp->state == PATH_GHOST) {
+ 			priority += pp->priority;
+ 			pgp->enabled_paths++;
+ 		}

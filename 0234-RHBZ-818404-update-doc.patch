@@ -1,0 +1,17 @@
+---
+ multipath/multipath.conf.5 |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+Index: multipath-tools/multipath/multipath.conf.5
+===================================================================
+--- multipath-tools.orig/multipath/multipath.conf.5
++++ multipath-tools/multipath/multipath.conf.5
+@@ -336,7 +336,7 @@ If set to
+ .I no
+ , multipathd will disable queueing for all devices when it is shut down.
+ Default is
+-.I yes
++.I no
+ .TP
+ .B flush_on_last_del
+ If set to

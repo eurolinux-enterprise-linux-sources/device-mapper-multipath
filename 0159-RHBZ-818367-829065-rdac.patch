@@ -1,0 +1,52 @@
+---
+ libmultipath/checkers/rdac.c |   16 ++++++++++++++--
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
+Index: multipath-tools/libmultipath/checkers/rdac.c
+===================================================================
+--- multipath-tools.orig/libmultipath/checkers/rdac.c
++++ multipath-tools/libmultipath/checkers/rdac.c
+@@ -118,7 +118,7 @@ int libcheck_init (struct checker * c)
+ 	set = 1;
+ out:
+ 	if (set == 0)
+-		condlog(0, "rdac checker failed to set TAS bit");
++		condlog(3, "rdac checker failed to set TAS bit");
+ 	return 0;
+ }
+ 
+@@ -166,6 +166,7 @@ retry:
+ 		switch (io_hdr.host_status) {
+ 		case DID_BUS_BUSY:
+ 		case DID_ERROR:
++		case DID_SOFT_ERROR:
+ 		case DID_TRANSPORT_DISRUPTED:
+ 			/* Transport error, retry */
+ 			if (--retry_rdac)
+@@ -198,7 +199,10 @@ struct volume_access_inq
+ 	char PQ_PDT;
+ 	char dontcare0[7];
+ 	char avtcvp;
+-	char dontcare1[39];
++	char dontcare1;
++	char asym_access_state_cur;
++	char vendor_specific_cur;
++	char dontcare2[36];
+ };
+ 
+ extern int
+@@ -218,6 +222,14 @@ libcheck_check (struct checker * c)
+ 		goto done;
+ 	}
+ 
++	/* check if controller is in service mode */
++	if ((inq.avtcvp & 0x10) &&
++			((inq.asym_access_state_cur & 0x0F) == 0x3) &&
++			(inq.vendor_specific_cur == 0x7)) {
++		ret = PATH_DOWN;
++		goto done;
++	}
++
+ 	/* If owner set or ioship mode is enabled return PATH_UP always */
+ 	if ((inq.avtcvp & 0x1) || ((inq.avtcvp >> 5) & 0x1))
+ 		ret = PATH_UP;

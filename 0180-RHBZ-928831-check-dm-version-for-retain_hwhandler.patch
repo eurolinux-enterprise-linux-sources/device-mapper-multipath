@@ -1,0 +1,84 @@
+---
+ libmultipath/devmapper.c |   20 +++++++++++---------
+ libmultipath/devmapper.h |    1 +
+ libmultipath/dmparser.c  |   10 +++++++---
+ 3 files changed, 19 insertions(+), 12 deletions(-)
+
+Index: multipath-tools/libmultipath/dmparser.c
+===================================================================
+--- multipath-tools.orig/libmultipath/dmparser.c
++++ multipath-tools/libmultipath/dmparser.c
+@@ -15,6 +15,7 @@
+ #include "util.h"
+ #include "debug.h"
+ #include "config.h"
++#include "devmapper.h"
+ 
+ #define WORD_SIZE 64
+ 
+@@ -123,9 +124,12 @@ assemble_features (struct multipath *mp)
+ 			 mp->no_path_retry != NO_PATH_RETRY_FAIL)
+ 			add_feature(features, "queue_if_no_path");
+ 	}
+-	if (mp->retain_hwhandler == RETAIN_HWHANDLER_ON)
+-		add_feature(features, "retain_attached_hw_handler");
+-
++	if (mp->retain_hwhandler == RETAIN_HWHANDLER_ON) {
++		if (!dm_ge_version(1, 5, 0))
++			condlog(2, "mpath target must be >= 1.5.0 to have support for 'retain_attached_hw_handler'. This feature will be disabled");
++		else
++			add_feature(features, "retain_attached_hw_handler");
++	}
+ 	return features;
+ }
+ 
+Index: multipath-tools/libmultipath/devmapper.c
+===================================================================
+--- multipath-tools.orig/libmultipath/devmapper.c
++++ multipath-tools/libmultipath/devmapper.c
+@@ -140,22 +140,24 @@ out:
+ }
+ 
+ int
+-dm_drv_get_rq (void)
++dm_ge_version(unsigned int t1, unsigned int t2, unsigned int t3)
+ {
+-	unsigned int minv_dmrq[3] = {1, 1, 0};
+ 	unsigned int version[3] = {0, 0, 0};
+-        unsigned int * v = version;
++	unsigned int target[3] = {t1, t2, t3};
+ 
+-	if (dm_drv_version(v, TGT_MPATH)) {
+-		/* in doubt return least capable */
++	if (dm_drv_version(version, TGT_MPATH))
+ 		return 0;
+-	}
+ 
++	return VERSION_GE(version, target);
++}
++
++int
++dm_drv_get_rq (void)
++{
+ 	/* test request based multipath capability */
+-	if VERSION_GE(v, minv_dmrq) {
++	if (dm_ge_version(1, 1, 0)) {
+ 		condlog(3, "activate request-based multipathing mode "
+-			   "(driver >= v%u.%u.%u)",
+-			minv_dmrq[0], minv_dmrq[1], minv_dmrq[2]);
++			   "(driver >= v1.1.0)");
+ 		return 1;
+ 	}
+ 	return 0;
+Index: multipath-tools/libmultipath/devmapper.h
+===================================================================
+--- multipath-tools.orig/libmultipath/devmapper.h
++++ multipath-tools/libmultipath/devmapper.h
+@@ -9,6 +9,7 @@
+ void dm_init(void);
+ int dm_prereq (void);
+ int dm_drv_get_rq (void);
++int dm_ge_version(unsigned int t1, unsigned int t2, unsigned int t3);
+ int dm_simplecmd_flush (int, const char *, int);
+ int dm_simplecmd_noflush (int, const char *);
+ int dm_addmap_create (struct multipath *mpp);

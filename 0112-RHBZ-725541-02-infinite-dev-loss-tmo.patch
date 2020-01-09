@@ -1,0 +1,88 @@
+---
+ libmultipath/defaults.h |    1 +
+ libmultipath/dict.c     |   25 ++++++++++++++++++++++---
+ 2 files changed, 23 insertions(+), 3 deletions(-)
+
+Index: multipath-tools/libmultipath/dict.c
+===================================================================
+--- multipath-tools.orig/libmultipath/dict.c
++++ multipath-tools/libmultipath/dict.c
+@@ -6,7 +6,7 @@
+  */
+ #include <sys/types.h>
+ #include <pwd.h>
+-
++#include <string.h>
+ #include "checkers.h"
+ #include "vector.h"
+ #include "hwtable.h"
+@@ -58,7 +58,12 @@ def_dev_loss_handler(vector strvec)
+ 	char * buff;
+ 
+ 	buff = set_value(strvec);
+-	if (sscanf(buff, "%u", &conf->dev_loss) != 1)
++	if (!buff)
++		return 1;
++
++	if (strlen(buff) == 8 && !strcmp(buff, "infinity"))
++		conf->dev_loss = MAX_DEV_LOSS_TMO;
++	else if (sscanf(buff, "%u", &conf->dev_loss) != 1)
+ 		conf->dev_loss = 0;
+ 
+ 	FREE(buff);
+@@ -795,7 +800,12 @@ hw_dev_loss_handler(vector strvec)
+ 	struct hwentry * hwe = VECTOR_LAST_SLOT(conf->hwtable);
+ 
+ 	buff = set_value(strvec);
+-	if (sscanf(buff, "%u", &hwe->dev_loss) != 1)
++	if (!buff)
++		return 1;
++
++	if (strlen(buff) == 8 && !strcmp(buff, "infinity"))
++		hwe->dev_loss = MAX_DEV_LOSS_TMO;
++	else if (sscanf(buff, "%u", &hwe->dev_loss) != 1)
+ 		hwe->dev_loss = 0;
+ 
+ 	FREE(buff);
+@@ -1631,6 +1641,8 @@ snprint_hw_fast_io_fail(char * buff, int
+ 	struct hwentry * hwe = (struct hwentry *)data;
+ 	if (!hwe->fast_io_fail)
+ 		return 0;
++	if (hwe->fast_io_fail == conf->fast_io_fail)
++		return 0;
+ 	if (hwe->fast_io_fail == -1)
+ 		return snprintf(buff, len, "off");
+ 	return snprintf(buff, len, "%d", hwe->fast_io_fail);
+@@ -1642,6 +1654,11 @@ snprint_hw_dev_loss(char * buff, int len
+ 	struct hwentry * hwe = (struct hwentry *)data;
+ 	if (!hwe->dev_loss)
+ 		return 0;
++	if (hwe->dev_loss == conf->dev_loss)
++		return 0;
++	if (hwe->dev_loss >= MAX_DEV_LOSS_TMO)
++		return snprintf(buff, len, "infinity");
++
+ 	return snprintf(buff, len, "%u", hwe->dev_loss);
+ }
+ 
+@@ -1896,6 +1913,8 @@ snprint_def_dev_loss(char * buff, int le
+ {
+ 	if (!conf->dev_loss)
+ 		return 0;
++	if (conf->dev_loss >= MAX_DEV_LOSS_TMO)
++		return snprintf(buff, len, "infinity");
+ 	return snprintf(buff, len, "%u", conf->dev_loss);
+ }
+ 
+Index: multipath-tools/libmultipath/defaults.h
+===================================================================
+--- multipath-tools.orig/libmultipath/defaults.h
++++ multipath-tools/libmultipath/defaults.h
+@@ -17,6 +17,7 @@
+ #define DEFAULT_CHECKINT	5
+ #define MAX_CHECKINT(a)		(a << 2)
+ 
++#define MAX_DEV_LOSS_TMO        0x7FFFFFFF
+ #define DEFAULT_PIDFILE		"/var/run/multipathd.pid"
+ #define DEFAULT_SOCKET		"/var/run/multipathd.sock"
+ #define DEFAULT_CONFIGFILE	"/etc/multipath.conf"

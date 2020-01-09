@@ -1,0 +1,148 @@
+---
+ libmultipath/config.c      |    1 +
+ libmultipath/config.h      |    1 +
+ libmultipath/dict.c        |   33 +++++++++++++++++++++++++++++++++
+ libmultipath/discovery.c   |    6 +++++-
+ multipath.conf.annotated   |    9 +++++++++
+ multipath/multipath.conf.5 |    9 +++++++++
+ 6 files changed, 58 insertions(+), 1 deletion(-)
+
+Index: multipath-tools/libmultipath/config.c
+===================================================================
+--- multipath-tools.orig/libmultipath/config.c
++++ multipath-tools/libmultipath/config.c
+@@ -564,6 +564,7 @@ load_config (char * file)
+ 	conf->detect_prio = DEFAULT_DETECT_PRIO;
+ 	conf->reload_readwrite = DEFAULT_RELOAD_RW;
+ 	conf->replace_wwid_whitespace = 0;
++	conf->force_sync = 0;
+ 
+ 	/*
+ 	 * preload default hwtable
+Index: multipath-tools/libmultipath/config.h
+===================================================================
+--- multipath-tools.orig/libmultipath/config.h
++++ multipath-tools/libmultipath/config.h
+@@ -110,6 +110,7 @@ struct config {
+ 	int detect_prio;
+ 	int reload_readwrite;
+ 	int replace_wwid_whitespace;
++	int force_sync;
+ 
+ 	char * dev;
+ 	char * sysfs_dir;
+Index: multipath-tools/libmultipath/dict.c
+===================================================================
+--- multipath-tools.orig/libmultipath/dict.c
++++ multipath-tools/libmultipath/dict.c
+@@ -711,6 +711,29 @@ def_replace_wwid_whitespace_handler(vect
+ 	return 0;
+ }
+ 
++static int
++def_force_sync_handler(vector strvec)
++{
++	char * buff;
++
++	buff = set_value(strvec);
++
++	if (!buff)
++		return 1;
++
++	if ((strlen(buff) == 2 && !strcmp(buff, "no")) ||
++	    (strlen(buff) == 1 && !strcmp(buff, "0")))
++		conf->force_sync = 0;
++	else if ((strlen(buff) == 3 && !strcmp(buff, "yes")) ||
++		 (strlen(buff) == 1 && !strcmp(buff, "1")))
++		conf->force_sync = 1;
++	else
++		conf->force_sync = 0;
++
++	FREE(buff);
++	return 0;
++}
++
+ /*
+  * blacklist block handlers
+  */
+@@ -2792,6 +2815,15 @@ snprint_def_replace_wwid_whitespace(char
+ }
+ 
+ static int
++snprint_def_force_sync(char * buff, int len, void * data)
++{
++	if (conf->force_sync)
++		return snprintf(buff, len, "yes");
++	else
++		return snprintf(buff, len, "no");
++}
++
++static int
+ snprint_ble_simple (char * buff, int len, void * data)
+ {
+ 	struct blentry * ble = (struct blentry *)data;
+@@ -2853,6 +2885,7 @@ init_keywords(void)
+ 	install_keyword("detect_prio", &def_detect_prio_handler, &snprint_def_detect_prio);
+ 	install_keyword("reload_readwrite", &def_reload_readwrite_handler, &snprint_def_reload_readwrite);
+ 	install_keyword("replace_wwid_whitespace", &def_replace_wwid_whitespace_handler, &snprint_def_replace_wwid_whitespace);
++	install_keyword("force_sync", &def_force_sync_handler, &snprint_def_force_sync);
+ 	__deprecated install_keyword("mode", &def_mode_handler, &snprint_def_mode);
+ 	__deprecated install_keyword("uid", &def_uid_handler, &snprint_def_uid);
+ 	__deprecated install_keyword("gid", &def_gid_handler, &snprint_def_gid);
+Index: multipath-tools/libmultipath/discovery.c
+===================================================================
+--- multipath-tools.orig/libmultipath/discovery.c
++++ multipath-tools/libmultipath/discovery.c
+@@ -1020,7 +1020,11 @@ get_state (struct path * pp, int daemon)
+ 	if (daemon) {
+ 		if (state == PATH_PENDING)
+ 			return state;
+-		checker_set_async(c);
++		if (conf->force_sync == 0)
++			checker_set_async(c);
++		else
++			checker_set_sync(c);
++
+ 	}
+ 	if (!pp->sysdev) {
+ 		condlog(2, "%s: no sysfs information", pp->dev);
+Index: multipath-tools/multipath.conf.annotated
+===================================================================
+--- multipath-tools.orig/multipath.conf.annotated
++++ multipath-tools/multipath.conf.annotated
+@@ -338,6 +338,15 @@
+ #	# values  : yes|no
+ #	# default : no
+ #	replace_wwid_whitespace yes
++#
++#	#
++#	# name    : force_sync
++#	# scope   : multipathd
++#	# desc    : If set to yes, multipath will run all of the checkers in
++#	            sync mode, even if the checker has an async mode.
++#	# values  : yes|no
++#	# default : no
++#	force_sync yes
+ #}
+ #	
+ ##
+Index: multipath-tools/multipath/multipath.conf.5
+===================================================================
+--- multipath-tools.orig/multipath/multipath.conf.5
++++ multipath-tools/multipath/multipath.conf.5
+@@ -432,6 +432,15 @@ If set to
+ devices using the default getuid callout (scsi_id) will add --relace-whitespace
+ to the callout line.  This will cause any whitespace in the wwid to be
+ replaced with one underscore.
++.TP
++.B force_sync
++If set to
++.I yes
++, multipathd will call the path checkers in sync mode only.  This means that
++only one checker will run at a time.  This is useful in the case where many
++multipathd checkers running in parallel causes significant CPU pressure. The
++Default is
++.I no
+ .
+ .SH "blacklist section"
+ The

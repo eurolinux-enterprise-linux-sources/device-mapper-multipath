@@ -1,0 +1,77 @@
+---
+ multipathd/cli_handlers.c |   25 +++++++++++++++++--------
+ 1 file changed, 17 insertions(+), 8 deletions(-)
+
+Index: multipath-tools/multipathd/cli_handlers.c
+===================================================================
+--- multipath-tools.orig/multipathd/cli_handlers.c
++++ multipath-tools/multipathd/cli_handlers.c
+@@ -85,25 +85,29 @@ show_map_topology (char ** r, int * len,
+ 		   struct vectors * vecs)
+ {
+ 	char * c;
+-	char * reply;
++	char * reply, * old = NULL;
+ 	unsigned int maxlen = INITIAL_REPLY_LEN;
+ 	int again = 1;
+ 
+-	reply = MALLOC(maxlen);
+-
+ 	if (update_multipath(vecs, mpp->alias, 0))
+ 		return 1;
++	reply = MALLOC(maxlen);
+ 	while (again) {
+-		if (!reply)
++		if (!reply) {
++			if (old)
++				FREE(old);
+ 			return 1;
++		}
+ 
+ 		c = reply;
+ 
+ 		c += snprint_multipath_topology(c, reply + maxlen - c, mpp, 2);
+ 		again = ((c - reply) == (maxlen - 1));
+ 
+-		if (again)
++		if (again) {
++			old = reply;
+ 			reply = REALLOC(reply, maxlen *= 2);
++		}
+ 
+ 	}
+ 	*r = reply;
+@@ -117,7 +121,7 @@ show_maps_topology (char ** r, int * len
+ 	int i;
+ 	struct multipath * mpp;
+ 	char * c;
+-	char * reply;
++	char * reply, * old = NULL;
+ 	unsigned int maxlen = INITIAL_REPLY_LEN;
+ 	int again = 1;
+  
+@@ -125,8 +129,11 @@ show_maps_topology (char ** r, int * len
+ 	reply = MALLOC(maxlen);
+ 
+ 	while (again) {
+-		if (!reply)
++		if (!reply) {
++			if (old)
++				FREE(old);
+ 			return 1;
++		}
+ 
+ 		c = reply;
+ 
+@@ -141,8 +148,10 @@ show_maps_topology (char ** r, int * len
+ 
+ 		again = ((c - reply) == (maxlen - 1));
+ 
+-		if (again)
++		if (again) {
++			old = reply;
+ 			reply = REALLOC(reply, maxlen *= 2);
++		}
+ 
+ 	}
+ 	*r = reply;

@@ -1,0 +1,16 @@
+---
+ libmultipath/propsel.c |    1 +
+ 1 file changed, 1 insertion(+)
+
+Index: multipath-tools/libmultipath/propsel.c
+===================================================================
+--- multipath-tools.orig/libmultipath/propsel.c
++++ multipath-tools/libmultipath/propsel.c
+@@ -375,6 +375,7 @@ select_no_path_retry(struct multipath *m
+ 	if (mp->flush_on_last_del == FLUSH_IN_PROGRESS) {
+ 		condlog(0, "flush_on_last_del in progress");
+ 		mp->no_path_retry = NO_PATH_RETRY_FAIL;
++		return 0;
+ 	}
+ 	if (mp->mpe && mp->mpe->no_path_retry != NO_PATH_RETRY_UNDEF) {
+ 		mp->no_path_retry = mp->mpe->no_path_retry;

@@ -1,0 +1,16 @@
+---
+ libmultipath/log_pthread.c |    1 +
+ 1 file changed, 1 insertion(+)
+
+Index: multipath-tools/libmultipath/log_pthread.c
+===================================================================
+--- multipath-tools.orig/libmultipath/log_pthread.c
++++ multipath-tools/libmultipath/log_pthread.c
+@@ -87,6 +87,7 @@ void log_thread_stop (void)
+ 	pthread_mutex_lock(logq_lock);
+ 	pthread_cancel(log_thr);
+ 	pthread_mutex_unlock(logq_lock);
++	pthread_join(log_thr, NULL);
+ 
+ 	flush_logqueue();
+ 

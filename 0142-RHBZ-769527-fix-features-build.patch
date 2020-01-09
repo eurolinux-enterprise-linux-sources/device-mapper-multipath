@@ -1,0 +1,59 @@
+---
+ libmultipath/dmparser.c |   38 +++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 37 insertions(+), 1 deletion(-)
+
+Index: multipath-tools/libmultipath/dmparser.c
+===================================================================
+--- multipath-tools.orig/libmultipath/dmparser.c
++++ multipath-tools/libmultipath/dmparser.c
+@@ -46,13 +46,49 @@ merge_words (char ** dst, char * word, i
+ }
+ 
+ char *
++remove_queue_feature (char *buf, char *features)
++{
++	unsigned int count;
++	char *ptr, *start;
++
++	if (strlen(buf) >= PARAMS_SIZE)
++		return buf;
++	ptr = strstr(buf, "queue_if_no_path");
++	/* ptr + 16 == ptr + strlen(ptr) */
++	if (!ptr || *(ptr - 1) != ' ' ||
++            (*(ptr + 16) != ' ' && *(ptr + 16) != '\0'))
++		return buf;
++
++	count = strtoul(buf, &start, 10);
++	if (start == buf)
++		return buf;
++	if (count <= 1)
++		return "0";
++
++	sprintf(features, "%u", count - 1);
++
++	if (start < ptr - 1)
++		strncat(features, start, (ptr - 1) - start);
++
++	ptr += 16;  /* strlen("queue_if_no_path") */
++	if (*ptr != '\0')
++		strcat(features, ptr);
++	return features;
++}
++
++char *
+ assemble_features (struct multipath *mp)
+ {
+ 	static char features[PARAMS_SIZE];
+ 	unsigned int nr_features;
+ 	char *ptr;
+ 
+-	if (!conf->daemon || mp->no_path_retry == NO_PATH_RETRY_UNDEF ||
++	if (!conf->daemon)
++		return mp->features;
++	if (mp->flush_on_last_del == FLUSH_IN_PROGRESS &&
++	    strstr(mp->features, "queue_if_no_path"))
++		return remove_queue_feature(mp->features, features);
++	if (mp->no_path_retry == NO_PATH_RETRY_UNDEF ||
+ 	    mp->no_path_retry == NO_PATH_RETRY_FAIL ||
+ 	    strstr(mp->features, "queue_if_no_path"))
+ 		return mp->features;

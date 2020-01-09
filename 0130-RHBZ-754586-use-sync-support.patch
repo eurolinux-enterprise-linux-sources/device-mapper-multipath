@@ -1,0 +1,17 @@
+---
+ libmultipath/devmapper.c |    2 ++
+ 1 file changed, 2 insertions(+)
+
+Index: multipath-tools/libmultipath/devmapper.c
+===================================================================
+--- multipath-tools.orig/libmultipath/devmapper.c
++++ multipath-tools/libmultipath/devmapper.c
+@@ -1158,6 +1158,8 @@ dm_rename (char * old, char * new)
+ 		goto out;
+ 	if (!dm_task_run(dmt))
+ 		goto out;
++	if (conf->daemon)
++		dm_task_update_nodes();
+ 
+ 	r = 1;
+ out:

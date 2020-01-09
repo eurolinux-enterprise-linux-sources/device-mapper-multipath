@@ -1,0 +1,26 @@
+---
+ multipathd/cli.c |   11 ++++++++++-
+ 1 file changed, 10 insertions(+), 1 deletion(-)
+
+Index: multipath-tools/multipathd/cli.c
+===================================================================
+--- multipath-tools.orig/multipathd/cli.c
++++ multipath-tools/multipathd/cli.c
+@@ -251,7 +251,16 @@ get_cmdvec (char * cmd, vector *v)
+ 			continue;
+ 		if (get_param) {
+ 			get_param = 0;
+-			cmdkw->param = strdup(buff);
++			/* use the basename for path and map arguments */
++			if (cmdkw->code == MAP || cmdkw->code == PATH) {
++				char *ptr = strrchr(buff, '/');
++				if (ptr && *(++ptr) != '\0') {
++					cmdkw->param = strdup(ptr);
++				} else
++					cmdkw->param = strdup(buff);
++			}
++			else
++				cmdkw->param = strdup(buff);
+ 			continue;
+ 		}
+ 		kw = find_key(buff);

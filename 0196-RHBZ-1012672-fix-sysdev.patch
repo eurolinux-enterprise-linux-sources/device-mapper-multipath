@@ -1,0 +1,374 @@
+---
+ libmultipath/discovery.c  |    5 -
+ libmultipath/structs.c    |    3 
+ libmultipath/structs.h    |    2 
+ libmultipath/sysfs.c      |  153 ++++++++++------------------------------------
+ libmultipath/sysfs.h      |    2 
+ multipathd/cli_handlers.c |    2 
+ multipathd/main.c         |    8 --
+ 7 files changed, 47 insertions(+), 128 deletions(-)
+
+Index: multipath-tools/libmultipath/discovery.c
+===================================================================
+--- multipath-tools.orig/libmultipath/discovery.c
++++ multipath-tools/libmultipath/discovery.c
+@@ -749,7 +749,7 @@ struct sysfs_device *sysfs_device_from_p
+ 	strlcpy(sysdev,"/block/", FILE_NAME_SIZE);
+ 	strlcat(sysdev,pp->dev, FILE_NAME_SIZE);
+ 
+-	return sysfs_device_get(sysdev);
++	return sysfs_device_get(sysdev, 1);
+ }
+ 
+ int
+@@ -758,7 +758,8 @@ path_offline(struct path * pp)
+ 	struct sysfs_device * parent;
+ 	char buff[SCSI_STATE_SIZE];
+ 
+-	pp->sysdev = sysfs_device_from_path(pp);
++	if (!pp->sysdev)
++		pp->sysdev = sysfs_device_from_path(pp);
+ 	if (!pp->sysdev) {
+ 		condlog(1, "%s: failed to get sysfs information", pp->dev);
+ 		return PATH_WILD;
+Index: multipath-tools/libmultipath/structs.c
+===================================================================
+--- multipath-tools.orig/libmultipath/structs.c
++++ multipath-tools/libmultipath/structs.c
+@@ -17,6 +17,7 @@
+ #include "blacklist.h"
+ #include "waiter.h"
+ #include "prio.h"
++#include "sysfs.h"
+ 
+ struct path *
+ alloc_path (void)
+@@ -42,6 +43,8 @@ free_path (struct path * pp)
+ 	if (!pp)
+ 		return;
+ 
++	if (pp->sysdev)
++		sysfs_device_put(pp->sysdev);
+ 	if (checker_selected(&pp->checker))
+ 		checker_put(&pp->checker);
+ 
+Index: multipath-tools/libmultipath/sysfs.c
+===================================================================
+--- multipath-tools.orig/libmultipath/sysfs.c
++++ multipath-tools/libmultipath/sysfs.c
+@@ -39,10 +39,6 @@ char sysfs_path[PATH_SIZE];
+ 
+ /* list of sysfs devices */
+ static LIST_HEAD(sysfs_dev_list);
+-struct sysfs_dev {
+-	struct list_head node;
+-	struct sysfs_device dev;
+-};
+ 
+ int sysfs_init(char *path, size_t len)
+ {
+@@ -59,8 +55,8 @@ int sysfs_init(char *path, size_t len)
+ 
+ void sysfs_cleanup(void)
+ {
+-	struct sysfs_dev *sysdev_loop;
+-	struct sysfs_dev *sysdev_temp;
++	struct sysfs_device *sysdev_loop;
++	struct sysfs_device *sysdev_temp;
+ 
+ 	list_for_each_entry_safe(sysdev_loop, sysdev_temp, &sysfs_dev_list, node) {
+ 		list_del(&sysdev_loop->node);
+@@ -126,12 +122,12 @@ int sysfs_resolve_link(char *devpath, si
+ 	return 0;
+ }
+ 
+-struct sysfs_device *sysfs_device_get(const char *devpath)
++struct sysfs_device *sysfs_device_get(const char *devpath, int cache)
+ {
+ 	char path[PATH_SIZE];
+ 	char devpath_real[PATH_SIZE];
+ 	struct sysfs_device *dev = NULL;
+-	struct sysfs_dev *sysdev_loop, *sysdev;
++	struct sysfs_device *sysdev_loop, *sysdev;
+ 	struct stat statbuf;
+ 	char link_path[PATH_SIZE];
+ 	char link_target[PATH_SIZE];
+@@ -162,11 +158,13 @@ struct sysfs_device *sysfs_device_get(co
+ 	if (lstat(path, &statbuf) != 0) {
+ 		/* if stat fails look in the cache */
+ 		dbg("stat '%s' failed: %s", path, strerror(errno));
++		if (!cache)
++			return NULL;
+ 		list_for_each_entry(sysdev_loop, &sysfs_dev_list, node) {
+-			if (strcmp(sysdev_loop->dev.devpath, devpath_real) == 0) {
++			if (strcmp(sysdev_loop->devpath, devpath_real) == 0) {
+ 				dbg("found vanished dev in cache '%s'",
+-				    sysdev_loop->dev.devpath);
+-				return &sysdev_loop->dev;
++				    sysdev_loop->devpath);
++				return sysdev_loop;
+ 			}
+ 		}
+ 		return NULL;
+@@ -177,22 +175,27 @@ struct sysfs_device *sysfs_device_get(co
+ 			return NULL;
+ 	}
+ 
+-	list_for_each_entry(sysdev_loop, &sysfs_dev_list, node) {
+-		if (strcmp(sysdev_loop->dev.devpath, devpath_real) == 0) {
+-			dbg("found dev in cache '%s'", sysdev_loop->dev.devpath);
+-			dev = &sysdev_loop->dev;
++	if (cache) {
++		list_for_each_entry(sysdev_loop, &sysfs_dev_list, node) {
++			if (strcmp(sysdev_loop->devpath,
++				   devpath_real) == 0) {
++				dbg("found dev in cache '%s'",
++				    sysdev_loop->devpath);
++				dev = sysdev_loop;
++			}
+ 		}
+ 	}
+ 
+ 	if(!dev) {
+ 		/* it is a new device */
+ 		dbg("new device '%s'", devpath_real);
+-		sysdev = malloc(sizeof(struct sysfs_dev));
++		sysdev = malloc(sizeof(struct sysfs_device));
+ 		if (sysdev == NULL)
+ 			return NULL;
+-		memset(sysdev, 0x00, sizeof(struct sysfs_dev));
+-		list_add(&sysdev->node, &sysfs_dev_list);
+-		dev = &sysdev->dev;
++		memset(sysdev, 0x00, sizeof(struct sysfs_device));
++		if (cache)
++			list_add(&sysdev->node, &sysfs_dev_list);
++		dev = sysdev;
+ 	}
+ 
+ 	sysfs_device_set_values(dev, devpath_real, NULL, NULL);
+@@ -284,7 +287,7 @@ struct sysfs_device *sysfs_device_get_pa
+ 		return NULL;
+ 
+ 	/* get parent and remember it */
+-	dev->parent = sysfs_device_get(parent_devpath);
++	dev->parent = sysfs_device_get(parent_devpath, 0);
+ 	return dev->parent;
+ 
+ device_link:
+@@ -294,7 +297,7 @@ device_link:
+ 		return NULL;
+ 
+ 	/* get parent and remember it */
+-	dev->parent = sysfs_device_get(parent_devpath);
++	dev->parent = sysfs_device_get(parent_devpath, 0);
+ 	return dev->parent;
+ }
+ 
+@@ -313,21 +316,25 @@ struct sysfs_device *sysfs_device_get_pa
+ 
+ void sysfs_device_put(struct sysfs_device *dev)
+ {
+-	struct sysfs_dev *sysdev_loop;
++	struct sysfs_device *parent;
++	struct sysfs_device *sysdev_loop;
+ 
+ 	list_for_each_entry(sysdev_loop, &sysfs_dev_list, node) {
+-		if (&sysdev_loop->dev == dev) {
+-			if (dev->parent)
+-				sysfs_device_put(dev->parent);
++		if (sysdev_loop == dev) {
++			parent = dev->parent;
++			while (parent) {
++				struct sysfs_device *tmp = parent;
++				parent = parent->parent;
++				free(tmp);
++			}
+ 			dbg("removed dev '%s' from cache",
+-			    sysdev_loop->dev.devpath);
++			    sysdev_loop->devpath);
+ 			list_del(&sysdev_loop->node);
+ 			free(sysdev_loop);
+ 			return;
+ 		}
+ 	}
+ 	dbg("dev '%s' not found in cache", dev->devpath);
+-
+ 	return;
+ }
+ 
+@@ -491,95 +498,3 @@ int sysfs_attr_get_value(const char *dev
+ out:
+ 	return ret;
+ }
+-
+-int sysfs_lookup_devpath_by_subsys_id(char *devpath_full, size_t len,
+-				      const char *subsystem, const char *id)
+-{
+-	size_t sysfs_len;
+-	char path_full[PATH_SIZE];
+-	char *path;
+-	struct stat statbuf;
+-
+-	sysfs_len = strlcpy(path_full, sysfs_path, sizeof(path_full));
+-	path = &path_full[sysfs_len];
+-
+-	if (strcmp(subsystem, "subsystem") == 0) {
+-		strlcpy(path, "/subsystem/", sizeof(path_full) - sysfs_len);
+-		strlcat(path, id, sizeof(path_full) - sysfs_len);
+-		if (stat(path_full, &statbuf) == 0)
+-			goto found;
+-
+-		strlcpy(path, "/bus/", sizeof(path_full) - sysfs_len);
+-		strlcat(path, id, sizeof(path_full) - sysfs_len);
+-		if (stat(path_full, &statbuf) == 0)
+-			goto found;
+-		goto out;
+-
+-		strlcpy(path, "/class/", sizeof(path_full) - sysfs_len);
+-		strlcat(path, id, sizeof(path_full) - sysfs_len);
+-		if (stat(path_full, &statbuf) == 0)
+-			goto found;
+-	}
+-
+-	if (strcmp(subsystem, "module") == 0) {
+-		strlcpy(path, "/module/", sizeof(path_full) - sysfs_len);
+-		strlcat(path, id, sizeof(path_full) - sysfs_len);
+-		if (stat(path_full, &statbuf) == 0)
+-			goto found;
+-		goto out;
+-	}
+-
+-	if (strcmp(subsystem, "drivers") == 0) {
+-		char subsys[NAME_SIZE];
+-		char *driver;
+-
+-		strlcpy(subsys, id, sizeof(subsys));
+-		driver = strchr(subsys, ':');
+-		if (driver != NULL) {
+-			driver[0] = '\0';
+-			driver = &driver[1];
+-			strlcpy(path, "/subsystem/", sizeof(path_full) - sysfs_len);
+-			strlcat(path, subsys, sizeof(path_full) - sysfs_len);
+-			strlcat(path, "/drivers/", sizeof(path_full) - sysfs_len);
+-			strlcat(path, driver, sizeof(path_full) - sysfs_len);
+-			if (stat(path_full, &statbuf) == 0)
+-				goto found;
+-
+-			strlcpy(path, "/bus/", sizeof(path_full) - sysfs_len);
+-			strlcat(path, subsys, sizeof(path_full) - sysfs_len);
+-			strlcat(path, "/drivers/", sizeof(path_full) - sysfs_len);
+-			strlcat(path, driver, sizeof(path_full) - sysfs_len);
+-			if (stat(path_full, &statbuf) == 0)
+-				goto found;
+-		}
+-		goto out;
+-	}
+-
+-	strlcpy(path, "/subsystem/", sizeof(path_full) - sysfs_len);
+-	strlcat(path, subsystem, sizeof(path_full) - sysfs_len);
+-	strlcat(path, "/devices/", sizeof(path_full) - sysfs_len);
+-	strlcat(path, id, sizeof(path_full) - sysfs_len);
+-	if (stat(path_full, &statbuf) == 0)
+-		goto found;
+-
+-	strlcpy(path, "/bus/", sizeof(path_full) - sysfs_len);
+-	strlcat(path, subsystem, sizeof(path_full) - sysfs_len);
+-	strlcat(path, "/devices/", sizeof(path_full) - sysfs_len);
+-	strlcat(path, id, sizeof(path_full) - sysfs_len);
+-	if (stat(path_full, &statbuf) == 0)
+-		goto found;
+-
+-	strlcpy(path, "/class/", sizeof(path_full) - sysfs_len);
+-	strlcat(path, subsystem, sizeof(path_full) - sysfs_len);
+-	strlcat(path, "/", sizeof(path_full) - sysfs_len);
+-	strlcat(path, id, sizeof(path_full) - sysfs_len);
+-	if (stat(path_full, &statbuf) == 0)
+-		goto found;
+-out:
+-	return 0;
+-found:
+-	if (S_ISLNK(statbuf.st_mode))
+-		sysfs_resolve_link(path, sizeof(path_full) - sysfs_len);
+-	strlcpy(devpath_full, path, len);
+-	return 1;
+-}
+Index: multipath-tools/libmultipath/sysfs.h
+===================================================================
+--- multipath-tools.orig/libmultipath/sysfs.h
++++ multipath-tools/libmultipath/sysfs.h
+@@ -15,7 +15,7 @@ int sysfs_init(char *path, size_t len);
+ void sysfs_cleanup(void);
+ void sysfs_device_set_values(struct sysfs_device *dev, const char *devpath,
+ 			     const char *subsystem, const char *driver);
+-struct sysfs_device *sysfs_device_get(const char *devpath);
++struct sysfs_device *sysfs_device_get(const char *devpath, int cache);
+ struct sysfs_device *sysfs_device_get_parent(struct sysfs_device *dev);
+ struct sysfs_device *sysfs_device_get_parent_with_subsystem(struct sysfs_device *dev, const char *subsystem);
+ void sysfs_device_put(struct sysfs_device *dev);
+Index: multipath-tools/multipathd/cli_handlers.c
+===================================================================
+--- multipath-tools.orig/multipathd/cli_handlers.c
++++ multipath-tools/multipathd/cli_handlers.c
+@@ -479,7 +479,7 @@ cli_add_map (void * v, char ** reply, in
+ 		return 0;
+ 	}
+ 	sprintf(dev_path,"/block/dm-%d", minor);
+-	sysdev = sysfs_device_get(dev_path);
++	sysdev = sysfs_device_get(dev_path, 1);
+ 	if (!sysdev) {
+ 		condlog(2, "%s: not found in sysfs", param);
+ 		return 0;
+Index: multipath-tools/multipathd/main.c
+===================================================================
+--- multipath-tools.orig/multipathd/main.c
++++ multipath-tools/multipathd/main.c
+@@ -318,8 +318,8 @@ uev_remove_map (struct sysfs_device * de
+ 			dev->kernel);
+ 		return 0;
+ 	}
+-	orphan_paths(vecs->pathvec, mpp);
+ 	remove_map_and_stop_waiter(mpp, vecs, 1);
++	sysfs_device_put(dev);
+ 	return 0;
+ }
+ 
+@@ -664,9 +664,7 @@ out:
+ 	if ((i = find_slot(vecs->pathvec, (void *)pp)) != -1)
+ 		vector_del_slot(vecs->pathvec, i);
+ 
+-	if (pp->sysdev)
+-		sysfs_device_put(pp->sysdev);
+-	else if (del_sysdev)
++	if (!pp->sysdev && del_sysdev)
+ 		*del_sysdev = 1;
+ 	free_path(pp);
+ 
+@@ -763,7 +761,7 @@ uev_trigger (struct uevent * uev, void *
+ 	lock(vecs->lock);
+ 	pthread_testcancel();
+ 
+-	sysdev = sysfs_device_get(uev->devpath);
++	sysdev = sysfs_device_get(uev->devpath, 1);
+ 	if(!sysdev)
+ 		goto out;
+ 
+Index: multipath-tools/libmultipath/structs.h
+===================================================================
+--- multipath-tools.orig/libmultipath/structs.h
++++ multipath-tools/libmultipath/structs.h
+@@ -2,6 +2,7 @@
+ #define _STRUCTS_H
+ 
+ #include <sys/types.h>
++#include "list.h"
+ 
+ #define WWID_SIZE		128
+ #define SERIAL_SIZE		64
+@@ -136,6 +137,7 @@ struct scsi_dev {
+ };
+ 
+ struct sysfs_device {
++	struct list_head node;
+ 	struct sysfs_device *parent;		/* parent device */
+ 	char devpath[PATH_SIZE];
+ 	char subsystem[NAME_SIZE];		/* $class, $bus, drivers, module */

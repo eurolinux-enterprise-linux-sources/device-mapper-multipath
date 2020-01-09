@@ -1,0 +1,18 @@
+---
+ multipath/multipath.8 |    3 +++
+ 1 file changed, 3 insertions(+)
+
+Index: multipath-tools/multipath/multipath.8
+===================================================================
+--- multipath-tools.orig/multipath/multipath.8
++++ multipath-tools/multipath/multipath.8
+@@ -53,6 +53,9 @@ force multipath to reload the device map
+ .B \-B
+ treat the bindings file as read only
+ .TP
++.B \-c
++check if the specified path device is or should be multipathed
++.TP
+ .BI \-p " policy"
+ force maps to specified policy:
+ .RS 1.2i

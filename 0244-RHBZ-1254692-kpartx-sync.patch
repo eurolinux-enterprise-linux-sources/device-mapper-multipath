@@ -1,0 +1,58 @@
+---
+ kpartx/kpartx.c           |   10 +++++++---
+ multipath/multipath.rules |    2 +-
+ 2 files changed, 8 insertions(+), 4 deletions(-)
+
+Index: multipath-tools/kpartx/kpartx.c
+===================================================================
+--- multipath-tools.orig/kpartx/kpartx.c
++++ multipath-tools/kpartx/kpartx.c
+@@ -83,7 +83,7 @@ initpts(void)
+ 	addpts("sun", read_sun_pt);
+ }
+ 
+-static char short_opts[] = "ladfgvp:t:su";
++static char short_opts[] = "ladfgvp:t:snu";
+ 
+ /* Used in gpt.c */
+ int force_gpt=0;
+@@ -100,7 +100,8 @@ usage(void) {
+ 	printf("\t-g force GUID partition table (GPT)\n");
+ 	printf("\t-f force devmap create\n");
+ 	printf("\t-v verbose\n");
+-	printf("\t-s sync mode. Don't return until the partitions are created\n");
++	printf("\t-n nosync mode. Return before the partitions are created\n");
++	printf("\t-s sync mode. Don't return until the partitions are created. Default.\n");
+ 	return 1;
+ }
+ 
+@@ -204,7 +205,7 @@ main(int argc, char **argv){
+ 	int loopro = 0;
+ 	int hotplug = 0;
+ 	int loopcreated = 0;
+-	int sync = 0;
++	int sync = 1;
+ 	struct stat buf;
+ 	uint32_t cookie = 0;
+ 
+@@ -265,6 +266,9 @@ main(int argc, char **argv){
+ 		case 's':
+ 			sync = 1;
+ 			break;
++		case 'n':
++			sync = 0;
++			break;
+ 		case 'u':
+ 			break;
+ 		default:
+Index: multipath-tools/multipath/multipath.rules
+===================================================================
+--- multipath-tools.orig/multipath/multipath.rules
++++ multipath-tools/multipath/multipath.rules
+@@ -20,5 +20,5 @@ ACTION!="change", GOTO="end_mpath"
+ ENV{DM_UUID}!="mpath-?*", GOTO="end_mpath"
+ ENV{DM_SUSPENDED}=="1", GOTO="end_mpath"
+ ENV{DM_ACTION}=="PATH_FAILED", GOTO="end_mpath"
+-ENV{DM_ACTIVATION}=="1", RUN+="$env{MPATH_SBIN_PATH}/kpartx -a -p p $tempnode"
++ENV{DM_ACTIVATION}=="1", RUN+="$env{MPATH_SBIN_PATH}/kpartx -an -p p $tempnode"
+ LABEL="end_mpath"

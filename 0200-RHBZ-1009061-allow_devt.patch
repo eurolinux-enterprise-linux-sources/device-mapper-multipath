@@ -1,0 +1,23 @@
+---
+ multipath/main.c |    8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+Index: multipath-tools/multipath/main.c
+===================================================================
+--- multipath-tools.orig/multipath/main.c
++++ multipath-tools/multipath/main.c
+@@ -277,8 +277,12 @@ configure (void)
+ 			char buff[FILE_NAME_SIZE];
+ 			struct path *pp;
+ 
+-			basenamecpy(conf->dev, buff);
+-			pp = find_path_by_dev(pathvec, buff);
++			if (conf->dev_type == DEV_DEVNODE) {
++				basenamecpy(conf->dev, buff);
++				pp = find_path_by_dev(pathvec, buff);
++			}
++			else
++				pp = find_path_by_devt(pathvec, conf->dev);
+ 
+ 			if (!pp) {
+ 				condlog(0, "can't find stored path");

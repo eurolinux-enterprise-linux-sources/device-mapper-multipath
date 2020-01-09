@@ -1,0 +1,67 @@
+---
+ multipath.conf.annotated   |   16 +++++++++++++++-
+ multipath/multipath.8      |    3 +++
+ multipath/multipath.conf.5 |    2 +-
+ 3 files changed, 19 insertions(+), 2 deletions(-)
+
+Index: multipath-tools/multipath.conf.annotated
+===================================================================
+--- multipath-tools.orig/multipath.conf.annotated
++++ multipath-tools/multipath.conf.annotated
+@@ -218,6 +218,20 @@
+ #	# values  : n > 0 | infinity
+ #	# default : determined by the OS
+ #	dev_loss_tmo 600
++#
++#	#
++#	# name    : hwtable_regex_match
++#	# scope   : multipath & multipathd
++#	# desc    : If set to yes, user device configs will be regular
++#	#           expression matched against the builtin configs to
++#	#           determine if they should modify an existing config or
++#	#           create a new one. If set to no, user device configs
++#	#           will be string matched against the builtin configs to
++#	#           determine if they should modify an existing config or
++#	#           create a new one.
++#	# values  : yes|no
++#	# default : no
++#	hwtable_regex_match yes
+ #}
+ #	
+ ##
+@@ -438,7 +452,7 @@
+ #		#
+ #		# name    : path_checker, checker
+ #		# scope   : multipathd
+-#		# desc    : path checking alorithm to use to check path state
++#		# desc    : path checking algorithm to use to check path state
+ #		# values  : readsector0|tur|emc_clariion|hp_sw|directio|rdac|
+ #		#           cciss_tur|hp_tur
+ #		#
+Index: multipath-tools/multipath/multipath.8
+===================================================================
+--- multipath-tools.orig/multipath/multipath.8
++++ multipath-tools/multipath/multipath.8
+@@ -47,6 +47,9 @@ flush a multipath device map specified a
+ .B \-F
+ flush all unused multipath device maps
+ .TP
++.B \-r
++force multipath to reload the device maps
++.TP
+ .B \-B
+ treat the bindings file as read only
+ .TP
+Index: multipath-tools/multipath/multipath.conf.5
+===================================================================
+--- multipath-tools.orig/multipath/multipath.conf.5
++++ multipath-tools/multipath/multipath.conf.5
+@@ -374,7 +374,7 @@ configs to determine if they should modi
+ one.  If set to
+ .I no
+ , user device configs will be string matched against the builtin configs to
+-determine if they shoudl modify an existing config or create a new one. Default
++determine if they should modify an existing config or create a new one. Default
+ is
+ .I no
+ .

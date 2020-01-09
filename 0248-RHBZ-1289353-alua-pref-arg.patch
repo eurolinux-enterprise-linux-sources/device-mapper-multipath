@@ -1,0 +1,101 @@
+---
+ libmultipath/prioritizers/alua.c |   20 +++++++++++++++++++-
+ libmultipath/propsel.c           |    1 +
+ multipath.conf.annotated         |    6 +++++-
+ multipath/multipath.conf.5       |    5 ++++-
+ 4 files changed, 29 insertions(+), 3 deletions(-)
+
+Index: multipath-tools/libmultipath/prioritizers/alua.c
+===================================================================
+--- multipath-tools.orig/libmultipath/prioritizers/alua.c
++++ multipath-tools/libmultipath/prioritizers/alua.c
+@@ -85,15 +85,33 @@ get_alua_info(int fd, struct alua_contex
+ 	return rc;
+ }
+ 
++int get_exclusive_perf_arg(char *args)
++{
++	char *ptr;
++
++	if (args == NULL)
++		return 0;
++	ptr = strstr(args, "exclusive_pref_bit");
++	if (!ptr)
++		return 0;
++	if (ptr[18] != '\0' && ptr[18] != ' ' && ptr[18] != '\t')
++		return 0;
++	if (ptr != args && ptr[-1] != ' ' && ptr[-1] != '\t')
++		return 0;
++	return 1;
++}
++
+ int getprio (struct path * pp)
+ {
+ 	int rc;
+ 	int aas;
+ 	int priopath;
++	int exclusive_perf;
+ 
+ 	if (pp->fd < 0)
+ 		return -ALUA_PRIO_NO_INFORMATION;
+ 
++	exclusive_perf = get_exclusive_perf_arg(pp->prio_args);
+ 	rc = get_alua_info(pp->fd, pp->prio.context);
+ 	if (rc >= 0) {
+ 		aas = (rc & 0x0f);
+@@ -114,7 +132,7 @@ int getprio (struct path * pp)
+ 			default:
+ 				rc = 0;
+ 		}
+-		if (priopath && aas != AAS_OPTIMIZED)
++		if (priopath && (aas != AAS_OPTIMIZED || exclusive_perf))
+ 			rc += 80;
+ 	} else {
+ 		switch(-rc) {
+Index: multipath-tools/libmultipath/propsel.c
+===================================================================
+--- multipath-tools.orig/libmultipath/propsel.c
++++ multipath-tools/libmultipath/propsel.c
+@@ -393,6 +393,7 @@ select_prio (struct path * pp)
+ 		return 0;
+ 	}
+ 	prio_get(p, DEFAULT_PRIO);
++	pp->prio_args = NULL;
+ 	condlog(3, "%s: prio = %s (internal default)",
+ 		pp->dev, DEFAULT_PRIO);
+ 	return 0;
+Index: multipath-tools/multipath.conf.annotated
+===================================================================
+--- multipath-tools.orig/multipath.conf.annotated
++++ multipath-tools/multipath.conf.annotated
+@@ -89,9 +89,13 @@
+ #	# desc    : the default function to call to obtain a path 
+ #	#           priority value. The ALUA bits in SPC-3 provide an
+ #	#           exploitable prio value for example.
++#	# args    : "exclusive_pref_bit"	A path with the tpg preferred
++#	#					bit set will always be in a
++#	#					priority group with a higher
++#	#					priority than all other groups
+ #	# default : (null)
+ #	#
+-#	prio	"alua"
++#	prio	"alua exclusive_pref_bit"
+ #
+ #	#
+ #	# name    : features
+Index: multipath-tools/multipath/multipath.conf.5
+===================================================================
+--- multipath-tools.orig/multipath/multipath.conf.5
++++ multipath-tools/multipath/multipath.conf.5
+@@ -182,7 +182,10 @@ Set a priority of one to all paths
+ Generate the path priority for EMC arrays
+ .TP
+ .B alua
+-Generate the path priority based on the SCSI-3 ALUA settings.
++Generate the path priority based on the SCSI-3 ALUA settings. This prioritizer
++has one optional argument
++.I exclusive_pref_bit
++
+ .TP
+ .B tpg_pref
+ Generate the path prority based on the SCSI-3 ALUA settings, using

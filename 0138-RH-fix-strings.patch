@@ -1,0 +1,42 @@
+---
+ cciss_id/cciss_id.c    |    7 ++++---
+ libmultipath/callout.c |    4 +++-
+ 2 files changed, 7 insertions(+), 4 deletions(-)
+
+Index: multipath-tools/cciss_id/cciss_id.c
+===================================================================
+--- multipath-tools.orig/cciss_id/cciss_id.c
++++ multipath-tools/cciss_id/cciss_id.c
+@@ -57,13 +57,14 @@ int main(int argc, char *argv[])
+ 
+ 	if ( strncmp(PATH_CCISSDEV, argv[1], strlen(PATH_CCISSDEV) ) != 0 ) {
+ 		if ( strchr(argv[1], '!') ) {
+-			sprintf(dev_name, "%s%s", PATH_CCISSDEV,
+-				strchr(argv[1], '!')+1);
++			snprintf(dev_name, LEN_DEVICEFILE, "%s%s",
++				 PATH_CCISSDEV, strchr(argv[1], '!')+1);
+ 		}
+                 //fprintf(stderr, "dev_name is: -%s-", dev_name);
+         } else {
+-		sprintf(dev_name, "%s", argv[1]);
++		snprintf(dev_name, LEN_DEVICEFILE, "%s", argv[1]);
+ 	}
++	dev_name[LEN_DEVICEFILE - 1] = '\0';
+ 
+ 	if (stat(dev_name, &file_stat) < 0) {
+ 		fprintf (stderr, "Stat failed for file %s. Errno=%d\n", dev_name, errno);
+Index: multipath-tools/libmultipath/callout.c
+===================================================================
+--- multipath-tools.orig/libmultipath/callout.c
++++ multipath-tools/libmultipath/callout.c
+@@ -168,7 +168,9 @@ apply_format (char * string, char * cmd,
+ 	myfree = CALLOUT_MAX_SIZE;
+ 
+ 	if (!pos) {
+-		strcpy(dst, string);
++		if (strlen(string) >= CALLOUT_MAX_SIZE)
++			return 1;
++		strncpy(dst, string, CALLOUT_MAX_SIZE);
+ 		return 0;
+ 	}
+ 

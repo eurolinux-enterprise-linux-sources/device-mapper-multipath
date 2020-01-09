@@ -1,0 +1,17 @@
+---
+ multipath/main.c |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+Index: multipath-tools/multipath/main.c
+===================================================================
+--- multipath-tools.orig/multipath/main.c
++++ multipath-tools/multipath/main.c
+@@ -317,7 +317,7 @@ configure (void)
+ 					  conf->elist_device,
+ 					  pp->vendor_id, pp->product_id) > 0) {
+ 				if (conf->dry_run == 2)
+-					printf("%s is not a valid mutipath device pathd\n", conf->dev);
++					printf("%s is not a valid multipath device path\n", conf->dev);
+ 				goto out;
+ 			}
+ 		}

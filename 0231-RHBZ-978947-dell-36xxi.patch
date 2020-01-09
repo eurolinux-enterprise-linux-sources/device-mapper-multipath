@@ -1,0 +1,97 @@
+---
+ libmultipath/hwtable.c  |   36 ++++++++++++++++++++++++++++++++++++
+ multipath.conf.defaults |   34 ++++++++++++++++++++++++++++++++++
+ 2 files changed, 70 insertions(+)
+
+Index: multipath-tools/libmultipath/hwtable.c
+===================================================================
+--- multipath-tools.orig/libmultipath/hwtable.c
++++ multipath-tools/libmultipath/hwtable.c
+@@ -963,6 +963,42 @@ static struct hwentry default_hw[] = {
+ 		.checker_name  = RDAC,
+ 		.prio_name     = PRIO_RDAC,
+ 	},
++        {
++                /* DELL MD36xxi */
++                .vendor        = "DELL",
++                .product       = "MD36xxi",
++                .bl_product    = "Universal Xport",
++                .getuid        = DEFAULT_GETUID,
++                .features      = "2 pg_init_retries 50",
++                .hwhandler     = "1 rdac",
++                .selector      = DEFAULT_SELECTOR,
++                .pgpolicy      = GROUP_BY_PRIO,
++                .pgfailback    = -FAILBACK_IMMEDIATE,
++                .rr_weight     = RR_WEIGHT_NONE,
++                .no_path_retry = 15,
++                .minio         = DEFAULT_MINIO,
++                .minio_rq      = DEFAULT_MINIO_RQ,
++                .checker_name  = RDAC,
++                .prio_name     = PRIO_RDAC,
++        },
++        {
++                /* DELL MD36xxf */
++                .vendor        = "DELL",
++                .product       = "MD36xxf",
++                .bl_product    = "Universal Xport",
++                .getuid        = DEFAULT_GETUID,
++                .features      = "2 pg_init_retries 50",
++                .hwhandler     = "1 rdac",
++                .selector      = DEFAULT_SELECTOR,
++                .pgpolicy      = GROUP_BY_PRIO,
++                .pgfailback    = -FAILBACK_IMMEDIATE,
++                .rr_weight     = RR_WEIGHT_NONE,
++                .no_path_retry = 15,
++                .minio         = DEFAULT_MINIO,
++                .minio_rq      = DEFAULT_MINIO_RQ,
++                .checker_name  = RDAC,
++                .prio_name     = PRIO_RDAC,
++        },
+ 	/*
+ 	 * NETAPP controller family
+ 	 *
+Index: multipath-tools/multipath.conf.defaults
+===================================================================
+--- multipath-tools.orig/multipath.conf.defaults
++++ multipath-tools/multipath.conf.defaults
+@@ -901,6 +901,40 @@
+ #		rr_min_io_rq 1
+ #	}
+ #	device {
++#		vendor "DELL"
++#		product "MD36xxi"
++#		product_blacklist "Universal Xport"
++#		path_grouping_policy group_by_prio
++#		getuid_callout "/lib/udev/scsi_id --whitelisted --device=/dev/%n"
++#		path_selector "round-robin 0"
++#		path_checker rdac
++#		features "2 pg_init_retries 50"
++#		hardware_handler "1 rdac"
++#		prio rdac
++#		failback immediate
++#		rr_weight uniform
++#		no_path_retry 15
++#		rr_min_io 1000
++#		rr_min_io_rq 1
++#	}
++#	device {
++#		vendor "DELL"
++#		product "MD36xxf"
++#		product_blacklist "Universal Xport"
++#		path_grouping_policy group_by_prio
++#		getuid_callout "/lib/udev/scsi_id --whitelisted --device=/dev/%n"
++#		path_selector "round-robin 0"
++#		path_checker rdac
++#		features "2 pg_init_retries 50"
++#		hardware_handler "1 rdac"
++#		prio rdac
++#		failback immediate
++#		rr_weight uniform
++#		no_path_retry 15
++#		rr_min_io 1000
++#		rr_min_io_rq 1
++#	}
++#	device {
+ #		vendor "NETAPP"
+ #		product "LUN.*"
+ #		path_grouping_policy group_by_prio

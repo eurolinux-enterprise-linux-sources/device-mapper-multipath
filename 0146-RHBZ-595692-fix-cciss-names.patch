@@ -1,0 +1,54 @@
+---
+ libmultipath/sysfs.c |    8 --------
+ multipath/main.c     |   12 ++++++++++++
+ 2 files changed, 12 insertions(+), 8 deletions(-)
+
+Index: multipath-tools/multipath/main.c
+===================================================================
+--- multipath-tools.orig/multipath/main.c
++++ multipath-tools/multipath/main.c
+@@ -351,6 +351,16 @@ get_dev_type(char *dev) {
+ 		return DEV_DEVMAP;
+ }
+ 
++static void
++convert_dev(char *dev)
++{
++	char *ptr = strstr(dev, "cciss/");
++	if (ptr) {
++		ptr += 5;
++		*ptr = '!';
++	}
++}
++
+ int
+ main (int argc, char *argv[])
+ {
+@@ -467,6 +477,8 @@ main (int argc, char *argv[])
+ 
+ 		strncpy(conf->dev, argv[optind], FILE_NAME_SIZE);
+ 		conf->dev_type = get_dev_type(conf->dev);
++		if (conf->dev_type == DEV_DEVNODE)
++			convert_dev(conf->dev);
+ 	}
+ 	conf->daemon = 0;
+ 
+Index: multipath-tools/libmultipath/sysfs.c
+===================================================================
+--- multipath-tools.orig/libmultipath/sysfs.c
++++ multipath-tools/libmultipath/sysfs.c
+@@ -86,14 +86,6 @@ void sysfs_device_set_values(struct sysf
+ 	strlcpy(dev->kernel, &pos[1], sizeof(dev->kernel));
+ 	dbg("kernel='%s'", dev->kernel);
+ 
+-	/* some devices have '!' in their name, change that to '/' */
+-	pos = dev->kernel;
+-	while (pos[0] != '\0') {
+-		if (pos[0] == '!')
+-			pos[0] = '/';
+-		pos++;
+-	}
+-
+ 	/* get kernel number */
+ 	pos = &dev->kernel[strlen(dev->kernel)];
+ 	while (isdigit(pos[-1]))

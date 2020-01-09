@@ -1,0 +1,97 @@
+---
+ libmultipath/alias.c |   34 +++++++++++++++++++++++++---------
+ 1 file changed, 25 insertions(+), 9 deletions(-)
+
+Index: multipath-tools/libmultipath/alias.c
+===================================================================
+--- multipath-tools.orig/libmultipath/alias.c
++++ multipath-tools/libmultipath/alias.c
+@@ -41,11 +41,11 @@ format_devname(char *name, int id, int l
+ 	memset(name,0, len);
+ 	strcpy(name,"mpath");
+ 	for (pos = len - 1; pos >= 5; pos--) {
++		id--;
+ 		name[pos] = 'a' + id % 26;
+ 		if (id < 26)
+ 			break;
+ 		id /= 26;
+-		id--;
+ 	}
+ 	memmove(name + 5, name + pos, len - pos);
+ 	name[5 + len - pos] = '\0';
+@@ -60,14 +60,17 @@ scan_devname(char *alias)
+ 
+ 	if (strncmp(alias, "mpath", 5))
+ 		return -1;
++	/* mpathzzzzzz is 321272406, larger than it may overflow */
++	if (strlen(alias) > 11)
++		return -1;
+ 
+ 	c = alias + 5;
+ 	while (*c != '\0' && *c != ' ' && *c != '\t') {
++		if (*c < 'a' || *c > 'z')
++			return -1;
+ 		i = *c - 'a';
+ 		n = ( n * 26 ) + i;
+ 		c++;
+-		if (*c < 'a' || *c > 'z')
+-			break;
+ 		n++;
+ 	}
+ 
+@@ -79,7 +82,9 @@ lookup_binding(FILE *f, char *map_wwid, 
+ {
+ 	char buf[LINE_MAX];
+ 	unsigned int line_nr = 0;
+-	int id = 0;
++	int biggest_id = 1;
++	int smallest_bigger_id = 321272406;
++	int id = 1;
+ 
+ 	*map_alias = NULL;
+ 
+@@ -95,8 +100,12 @@ lookup_binding(FILE *f, char *map_wwid, 
+ 		if (!alias) /* blank line */
+ 			continue;
+ 		curr_id = scan_devname(alias);
+-		if (curr_id >= id)
+-			id = curr_id + 1;
++		if (curr_id == id)
++			id++;
++		if (curr_id > biggest_id)
++			biggest_id = curr_id;
++		if (curr_id > id && curr_id < smallest_bigger_id)
++			smallest_bigger_id = curr_id;
+ 		wwid = strtok(NULL, "");
+ 		if (!wwid){
+ 			condlog(3,
+@@ -111,11 +120,18 @@ lookup_binding(FILE *f, char *map_wwid, 
+ 			if (*map_alias == NULL)
+ 				condlog(0, "Cannot copy alias from bindings "
+ 					"file : %s", strerror(errno));
+-			return id;
++			return 0;
+ 		}
+ 	}
+ 	condlog(3, "No matching wwid [%s] in bindings file.", map_wwid);
+-	return id;
++	if (id < smallest_bigger_id)
++		return id;
++	if (id >= 321272406) {
++		condlog(0, "mpathzzzzzz is the largest possible "
++			   "user_friend_name");
++		return 0;
++	}
++	return biggest_id + 1;
+ }
+ 
+ static int
+@@ -251,7 +267,7 @@ get_user_friendly_alias(char *wwid, char
+ 		return NULL;
+ 	}
+ 
+-	if (!alias && can_write && !bindings_read_only)
++	if (!alias && can_write && !bindings_read_only && id)
+ 		alias = allocate_binding(fd, wwid, id);
+ 
+ 	fclose(f);

@@ -1,0 +1,17 @@
+---
+ libmultipath/prioritizers/alua_rtpg.c |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+Index: multipath-tools/libmultipath/prioritizers/alua_rtpg.c
+===================================================================
+--- multipath-tools.orig/libmultipath/prioritizers/alua_rtpg.c
++++ multipath-tools/libmultipath/prioritizers/alua_rtpg.c
+@@ -24,7 +24,7 @@
+ #include "alua_rtpg.h"
+ 
+ #define SENSE_BUFF_LEN  32
+-#define DEF_TIMEOUT     300000
++#define DEF_TIMEOUT     60000
+ 
+ /*
+  * Macro used to print debug messaged.

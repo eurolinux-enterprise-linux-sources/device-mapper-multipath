@@ -1,0 +1,238 @@
+---
+ libmultipath/config.c      |   93 ++++++++++++++++++++++++++++-----------------
+ libmultipath/config.h      |    1 
+ libmultipath/dict.c        |   28 +++++++++++++
+ multipath/multipath.conf.5 |   12 +++++
+ 4 files changed, 100 insertions(+), 34 deletions(-)
+
+Index: multipath-tools/libmultipath/config.c
+===================================================================
+--- multipath-tools.orig/libmultipath/config.c
++++ multipath-tools/libmultipath/config.c
+@@ -49,42 +49,57 @@ hwe_strmatch (struct hwentry *hwe1, stru
+ 	return 0;
+ }
+ 
++static int
++hwe_regmatch(struct hwentry *hwe, struct hwentry *hw)
++{
++	regex_t vre, pre, rre;
++	int ret = 1;
++
++	if (hwe->vendor &&
++	    regcomp(&vre, hwe->vendor, REG_EXTENDED|REG_NOSUB))
++		goto out;
++	if (hwe->product &&
++	    regcomp(&pre, hwe->product, REG_EXTENDED|REG_NOSUB))
++		goto out_vre;
++	if (hwe->revision &&
++	    regcomp(&rre, hwe->revision, REG_EXTENDED|REG_NOSUB))
++		goto out_pre;
++
++	if ((!hwe->vendor || !hw->vendor ||
++	     !regexec(&vre, hw->vendor, 0, NULL, 0)) &&
++	    (!hwe->product || !hw->product ||
++	     !regexec(&pre, hw->product, 0, NULL, 0)) &&
++	    (!hwe->revision || !hw->revision ||
++	     !regexec(&rre, hw->revision, 0, NULL, 0)))
++		ret = 0;
++
++	if (hwe->revision)
++		regfree(&rre);
++out_pre:
++	if (hwe->product)
++		regfree(&pre);
++out_vre:
++	if (hwe->vendor)
++		regfree(&vre);
++out:
++	return ret;
++}
++
+ struct hwentry *
+ find_hwe (vector hwtable, char * vendor, char * product, char * revision)
+ {
+ 	int i;
+-	struct hwentry *hwe, *ret = NULL;
+-	regex_t vre, pre, rre;
++	struct hwentry hw, *hwe, *ret = NULL;
+ 
+-	vector_foreach_slot (hwtable, hwe, i) {
+-		if (hwe->vendor &&
+-		    regcomp(&vre, hwe->vendor, REG_EXTENDED|REG_NOSUB))
+-			break;
+-		if (hwe->product &&
+-		    regcomp(&pre, hwe->product, REG_EXTENDED|REG_NOSUB)) {
+-			regfree(&vre);
+-			break;
+-		}
+-		if (hwe->revision &&
+-		    regcomp(&rre, hwe->revision, REG_EXTENDED|REG_NOSUB)) {
+-			regfree(&vre);
+-			regfree(&pre);
+-			break;
+-		}
+-		if ((!hwe->vendor || !regexec(&vre, vendor, 0, NULL, 0)) &&
+-		    (!hwe->product || !regexec(&pre, product, 0, NULL, 0)) &&
+-		    (!hwe->revision || !regexec(&rre, revision, 0, NULL, 0)))
+-			ret = hwe;
+-
+-		if (hwe->revision)
+-			regfree(&rre);
+-		if (hwe->product)
+-			regfree(&pre);
+-		if (hwe->vendor)
+-			regfree(&vre);
++	hw.vendor = vendor;
++	hw.product = product;
++	hw.revision = revision;
+ 
+-		if (ret)
+-			break;
++	vector_foreach_slot (hwtable, hwe, i) {
++		if (hwe_regmatch(hwe, &hw))
++			continue;
++		ret = hwe;
++		break;
+ 	}
+ 	return ret;
+ }
+@@ -356,15 +371,22 @@ out:
+ }
+ 
+ static int
+-factorize_hwtable (vector hw)
++factorize_hwtable (vector hw, int n)
+ {
+ 	struct hwentry *hwe1, *hwe2;
+ 	int i, j;
+ 
+ 	vector_foreach_slot(hw, hwe1, i) {
+-		j = i+1;
++		if (i == n)
++			break;
++
++		j = n;
+ 		vector_foreach_slot_after(hw, hwe2, j) {
+-			if (hwe_strmatch(hwe1, hwe2))
++			if (conf->regex_match){
++				if (hwe_regmatch(hwe2, hwe1))
++					continue;
++			}
++			else if (hwe_strmatch(hwe1, hwe2))
+ 				continue;
+ 			/* dup */
+ 			merge_hwe(hwe1, hwe2);
+@@ -432,6 +454,7 @@ free_config (struct config * conf)
+ int
+ load_config (char * file)
+ {
++	int hwtable_size;
+ 	if (!conf)
+ 		conf = alloc_config();
+ 
+@@ -493,13 +516,15 @@ load_config (char * file)
+ 			goto out;
+ 		}
+ 	}
++	hwtable_size = VECTOR_SIZE(conf->hwtable);
+ 	if (setup_default_hwtable(conf->hwtable))
+ 		goto out;
+ 	/*
+ 	 * remove duplica in hwtable. config file takes precedence
+ 	 * over build-in hwtable
+ 	 */
+-	factorize_hwtable(conf->hwtable);
++	if (hwtable_size)
++		factorize_hwtable(conf->hwtable, hwtable_size);
+ 
+ 	/*
+ 	 * fill the voids left in the config file
+Index: multipath-tools/libmultipath/config.h
+===================================================================
+--- multipath-tools.orig/libmultipath/config.h
++++ multipath-tools/libmultipath/config.h
+@@ -94,6 +94,7 @@ struct config {
+ 	int find_multipaths;
+ 	int allow_queueing;
+ 	int log_checker_err;
++	int regex_match;
+ 	uid_t uid;
+ 	gid_t gid;
+ 	mode_t mode;
+Index: multipath-tools/libmultipath/dict.c
+===================================================================
+--- multipath-tools.orig/libmultipath/dict.c
++++ multipath-tools/libmultipath/dict.c
+@@ -401,6 +401,25 @@ def_no_path_retry_handler(vector strvec)
+ }
+ 
+ static int
++def_hwtable_regex_match(vector strvec)
++{
++	char * buff;
++
++	buff = set_value(strvec);
++	if (!buff)
++		return 1;
++
++	if (!strncmp(buff, "on", 2) || !strncmp(buff, "yes", 3) ||
++	    !strncmp(buff, "1", 1))
++		conf->regex_match = 1;
++	else
++		conf->regex_match = 0;
++
++	free(buff);
++	return 0;
++}
++
++static int
+ def_queue_without_daemon(vector strvec)
+ {
+ 	char * buff;
+@@ -2186,6 +2205,14 @@ snprint_def_no_path_retry (char * buff, 
+ }
+ 
+ static int
++snprint_def_hwtable_regex_match (char * buff, int len, void * data)
++{
++	if (conf->regex_match)
++		return snprintf(buff, len, "yes");
++	return snprintf(buff, len, "no");
++}
++
++static int
+ snprint_def_queue_without_daemon (char * buff, int len, void * data)
+ {
+ 	switch (conf->queue_without_daemon) {
+@@ -2309,6 +2336,7 @@ init_keywords(void)
+ 	install_keyword("rr_weight", &def_weight_handler, &snprint_def_rr_weight);
+ 	install_keyword("no_path_retry", &def_no_path_retry_handler, &snprint_def_no_path_retry);
+ 	install_keyword("queue_without_daemon", &def_queue_without_daemon, &snprint_def_queue_without_daemon);
++	install_keyword("hwtable_regex_match", &def_hwtable_regex_match, &snprint_def_hwtable_regex_match);
+ 	install_keyword("checker_timeout", &def_checker_timeout_handler, &snprint_def_checker_timeout);
+ 	install_keyword("pg_timeout", &def_pg_timeout_handler, &snprint_def_pg_timeout);
+ 	install_keyword("flush_on_last_del", &def_flush_on_last_del_handler, &snprint_def_flush_on_last_del);
+Index: multipath-tools/multipath/multipath.conf.5
+===================================================================
+--- multipath-tools.orig/multipath/multipath.conf.5
++++ multipath-tools/multipath/multipath.conf.5
+@@ -365,6 +365,18 @@ errors are logged at level 3 until the d
+ .I always
+ , multipathd always logs the path checker error at logging level 2. Default is
+ .I always
++.TP
++.B hwtable_regex_match
++If set to
++.I yes
++, user device configs will be regular expression matched against the builtin
++configs to determine if they should modify an existing config or create a new
++one.  If set to
++.I no
++, user device configs will be string matched against the builtin configs to
++determine if they shoudl modify an existing config or create a new one. Default
++is
++.I no
+ .
+ .SH "blacklist section"
+ The

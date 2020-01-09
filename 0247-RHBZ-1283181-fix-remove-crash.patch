@@ -1,0 +1,18 @@
+---
+ multipathd/main.c |    3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+Index: multipath-tools/multipathd/main.c
+===================================================================
+--- multipath-tools.orig/multipathd/main.c
++++ multipath-tools/multipathd/main.c
+@@ -603,7 +603,8 @@ ev_remove_path (char * devname, struct v
+ 	if (!pp) {
+ 		/* Not an error; path might have been purged earlier */
+ 		condlog(0, "%s: path already removed", devname);
+-		*del_sysdev = 1;
++		if (del_sysdev)
++			*del_sysdev = 1;
+ 		return 0;
+ 	}
+ 

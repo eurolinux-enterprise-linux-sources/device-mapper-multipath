@@ -1,0 +1,187 @@
+---
+ libmultipath/config.c      |   20 ++++++++++++++++----
+ libmultipath/config.h      |    1 +
+ libmultipath/defaults.h    |    1 +
+ libmultipath/dict.c        |   33 +++++++++++++++++++++++++++++++++
+ multipath.conf.annotated   |   11 +++++++++++
+ multipath.conf.defaults    |    1 +
+ multipath/multipath.conf.5 |    7 +++++++
+ 7 files changed, 70 insertions(+), 4 deletions(-)
+
+Index: multipath-tools/libmultipath/config.c
+===================================================================
+--- multipath-tools.orig/libmultipath/config.c
++++ multipath-tools/libmultipath/config.c
+@@ -335,8 +335,15 @@ store_hwe (vector hwtable, struct hwentr
+ 	if (dhwe->revision && !(hwe->revision = set_param_str(dhwe->revision)))
+ 		goto out;
+ 
+-	if (dhwe->getuid && !(hwe->getuid = set_param_str(dhwe->getuid)))
+-		goto out;
++	if (dhwe->getuid) {
++		if (strcmp(dhwe->getuid, DEFAULT_GETUID) == 0 &&
++		    conf->replace_wwid_whitespace)
++			hwe->getuid = set_param_str(DEFAULT_NOSPACE_GETUID);
++		else
++			hwe->getuid = set_param_str(dhwe->getuid);
++		if (hwe->getuid == NULL)
++			goto out;
++	}
+ 
+ 	if (dhwe->features && !(hwe->features = set_param_str(dhwe->features)))
+ 		goto out;
+@@ -495,6 +502,7 @@ load_config (char * file)
+ 	conf->retain_hwhandler = DEFAULT_RETAIN_HWHANDLER;
+ 	conf->detect_prio = DEFAULT_DETECT_PRIO;
+ 	conf->reload_readwrite = 0;
++	conf->replace_wwid_whitespace = 0;
+ 
+ 	/*
+ 	 * preload default hwtable
+@@ -599,8 +607,12 @@ load_config (char * file)
+ 	if (conf->udev_dir == NULL)
+ 		conf->udev_dir = set_default(DEFAULT_UDEVDIR);
+ 
+-	if (conf->getuid == NULL)
+-		conf->getuid = set_default(DEFAULT_GETUID);
++	if (conf->getuid == NULL) {
++		if (conf->replace_wwid_whitespace)
++			conf->getuid = set_default(DEFAULT_NOSPACE_GETUID);
++		else
++			conf->getuid = set_default(DEFAULT_GETUID);
++	}
+ 
+ 	if (conf->features == NULL)
+ 		conf->features = set_default(DEFAULT_FEATURES);
+Index: multipath-tools/libmultipath/config.h
+===================================================================
+--- multipath-tools.orig/libmultipath/config.h
++++ multipath-tools/libmultipath/config.h
+@@ -107,6 +107,7 @@ struct config {
+ 	int retain_hwhandler;
+ 	int detect_prio;
+ 	int reload_readwrite;
++	int replace_wwid_whitespace;
+ 
+ 	char * dev;
+ 	char * sysfs_dir;
+Index: multipath-tools/libmultipath/dict.c
+===================================================================
+--- multipath-tools.orig/libmultipath/dict.c
++++ multipath-tools/libmultipath/dict.c
+@@ -688,6 +688,29 @@ def_reload_readwrite_handler(vector strv
+ 	return 0;
+ }
+ 
++static int
++def_replace_wwid_whitespace_handler(vector strvec)
++{
++	char * buff;
++
++	buff = set_value(strvec);
++
++	if (!buff)
++		return 1;
++
++	if ((strlen(buff) == 2 && !strcmp(buff, "no")) ||
++	    (strlen(buff) == 1 && !strcmp(buff, "0")))
++		conf->replace_wwid_whitespace = 0;
++	else if ((strlen(buff) == 3 && !strcmp(buff, "yes")) ||
++		 (strlen(buff) == 1 && !strcmp(buff, "1")))
++		conf->replace_wwid_whitespace = 1;
++	else
++		conf->replace_wwid_whitespace = 0;
++
++	FREE(buff);
++	return 0;
++}
++
+ /*
+  * blacklist block handlers
+  */
+@@ -2684,6 +2707,15 @@ snprint_def_reload_readwrite(char * buff
+ }
+ 
+ static int
++snprint_def_replace_wwid_whitespace(char * buff, int len, void * data)
++{
++	if (conf->replace_wwid_whitespace)
++		return snprintf(buff, len, "yes");
++	else
++		return snprintf(buff, len, "no");
++}
++
++static int
+ snprint_ble_simple (char * buff, int len, void * data)
+ {
+ 	struct blentry * ble = (struct blentry *)data;
+@@ -2744,6 +2776,7 @@ init_keywords(void)
+ 	install_keyword("retain_attached_hw_handler", &def_retain_hwhandler_handler, &snprint_def_retain_hwhandler);
+ 	install_keyword("detect_prio", &def_detect_prio_handler, &snprint_def_detect_prio);
+ 	install_keyword("reload_readwrite", &def_reload_readwrite_handler, &snprint_def_reload_readwrite);
++	install_keyword("replace_wwid_whitespace", &def_replace_wwid_whitespace_handler, &snprint_def_replace_wwid_whitespace);
+ 	__deprecated install_keyword("mode", &def_mode_handler, &snprint_def_mode);
+ 	__deprecated install_keyword("uid", &def_uid_handler, &snprint_def_uid);
+ 	__deprecated install_keyword("gid", &def_gid_handler, &snprint_def_gid);
+Index: multipath-tools/libmultipath/defaults.h
+===================================================================
+--- multipath-tools.orig/libmultipath/defaults.h
++++ multipath-tools/libmultipath/defaults.h
+@@ -1,4 +1,5 @@
+ #define DEFAULT_GETUID		"/lib/udev/scsi_id --whitelisted --device=/dev/%n"
++#define DEFAULT_NOSPACE_GETUID  "/lib/udev/scsi_id --whitelisted --replace-whitespace --device=/dev/%n"
+ #define DEFAULT_UDEVDIR		"/dev"
+ #define DEFAULT_MULTIPATHDIR	"/" LIB_STRING "/multipath"
+ #define DEFAULT_SELECTOR	"round-robin 0"
+Index: multipath-tools/multipath/multipath.conf.5
+===================================================================
+--- multipath-tools.orig/multipath/multipath.conf.5
++++ multipath-tools/multipath/multipath.conf.5
+@@ -411,6 +411,13 @@ change event for a path of a readonly mu
+ the path is now read/write.  If so, multipathd will reload the multipath device
+ to switch it to read/write. Default is
+ .I no
++.TP
++.B replace_wwid_whitespace
++If set to
++.I yes
++devices using the default getuid callout (scsi_id) will add --relace-whitespace
++to the callout line.  This will cause any whitespace in the wwid to be
++replaced with one underscore.
+ .
+ .SH "blacklist section"
+ The
+Index: multipath-tools/multipath.conf.annotated
+===================================================================
+--- multipath-tools.orig/multipath.conf.annotated
++++ multipath-tools/multipath.conf.annotated
+@@ -244,6 +244,17 @@
+ #	# values  : yes|no
+ #	# default : no
+ #	reload_readwrite yes
++#
++#	#
++#	# name    : replace_wwid_whitespace
++#	# scope   : multipath & multipathd
++#	# desc    : If set to yes, devices using the default getuid callout
++#	#           (scsi_id) will add --relace-whitespace to the callout line.
++#	#           This will cause any whitespace in the wwid to be replaced
++#	#           with one underscore.
++#	# values  : yes|no
++#	# default : no
++#	replace_wwid_whitespace yes
+ #}
+ #	
+ ##
+Index: multipath-tools/multipath.conf.defaults
+===================================================================
+--- multipath-tools.orig/multipath.conf.defaults
++++ multipath-tools/multipath.conf.defaults
+@@ -25,6 +25,7 @@
+ #	find_multipaths no
+ #	log_checker_err always
+ #	reload_readwrite no
++#	replace_wwid_whitespace
+ #}
+ #blacklist {
+ #	devnode "^(ram|raw|loop|fd|md|dm-|sr|scd|st)[0-9]*"

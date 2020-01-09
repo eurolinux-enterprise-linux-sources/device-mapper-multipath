@@ -1,0 +1,31 @@
+---
+ libmultipath/hwtable.c  |    2 ++
+ multipath.conf.defaults |    2 ++
+ 2 files changed, 4 insertions(+)
+
+Index: multipath-tools/libmultipath/hwtable.c
+===================================================================
+--- multipath-tools.orig/libmultipath/hwtable.c
++++ multipath-tools/libmultipath/hwtable.c
+@@ -987,6 +987,8 @@ static struct hwentry default_hw[] = {
+ 		.fast_io_fail  = 5,
+ 		.checker_name  = TUR,
+ 		.prio_name     = PRIO_ONTAP,
++		.retain_hwhandler = RETAIN_HWHANDLER_ON,
++		.detect_prio   = DETECT_PRIO_ON,
+ 	},
+ 	/*
+ 	 * IBM NSeries (NETAPP) controller family
+Index: multipath-tools/multipath.conf.defaults
+===================================================================
+--- multipath-tools.orig/multipath.conf.defaults
++++ multipath-tools/multipath.conf.defaults
+@@ -912,6 +912,8 @@
+ #		flush_on_last_del yes
+ #		fast_io_fail_tmo 5
+ #		dev_loss_tmo infinity
++#		retain_attached_hw_handler yes
++#		detect_prio yes
+ #	}
+ #	device {
+ #		vendor "IBM"

@@ -1,0 +1,16 @@
+---
+ multipath.conf.defaults |    1 -
+ 1 file changed, 1 deletion(-)
+
+Index: multipath-tools/multipath.conf.defaults
+===================================================================
+--- multipath-tools.orig/multipath.conf.defaults
++++ multipath-tools/multipath.conf.defaults
+@@ -19,7 +19,6 @@
+ #	rr_weight uniform
+ #	queue_without_daemon no
+ #	hwtable_regex_match no
+-#	pg_timeout none
+ #	flush_on_last_del yes
+ #	user_friendly_names no
+ #	find_multipaths no

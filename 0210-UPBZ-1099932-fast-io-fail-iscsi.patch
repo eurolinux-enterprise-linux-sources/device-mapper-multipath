@@ -1,0 +1,136 @@
+---
+ libmultipath/discovery.c |   47 +++++++++++++++++++++++++++++++++++++++++------
+ libmultipath/structs.h   |   11 +++++++++--
+ 2 files changed, 50 insertions(+), 8 deletions(-)
+
+Index: multipath-tools/libmultipath/discovery.c
+===================================================================
+--- multipath-tools.orig/libmultipath/discovery.c
++++ multipath-tools/libmultipath/discovery.c
+@@ -240,7 +240,7 @@ sysfs_get_size (struct sysfs_device * de
+ }
+ 
+ int
+-sysfs_get_fc_nodename (struct sysfs_device * dev, char * node,
++sysfs_get_fc_nodename (struct sysfs_device * dev, struct path * pp,
+ 		       unsigned int host, unsigned int channel,
+ 		       unsigned int target)
+ {
+@@ -254,8 +254,11 @@ sysfs_get_fc_nodename (struct sysfs_devi
+ 		return 1;
+ 	}
+ 
+-	if (!sysfs_attr_get_value(attr_path, "node_name", node, NODE_NAME_SIZE))
++	if (!sysfs_attr_get_value(attr_path, "node_name", pp->tgt_node_name,
++				  NODE_NAME_SIZE)) {
++		pp->sg_id.proto_id = SCSI_PROTOCOL_FCP;
+ 		return 0;
++	}
+ 
+ 	if (!dev) {
+ 		condlog(0, "can't get sysfs value nodename. sysdev is NULL");
+@@ -271,9 +274,12 @@ sysfs_get_fc_nodename (struct sysfs_devi
+ 		return 1;
+ 	}
+ 
+-	if (!sysfs_attr_get_value(attr_path, "targetname", node,
+-				  NODE_NAME_SIZE))
++	if (!sysfs_attr_get_value(attr_path, "targetname", pp->tgt_node_name,
++				  NODE_NAME_SIZE)) {
++		pp->sg_id.transport_id = session;
++		pp->sg_id.proto_id = SCSI_PROTOCOL_ISCSI;
+ 		return 0;
++	}
+ 
+ 	return 1;
+ }
+@@ -314,6 +320,33 @@ find_rport_id(struct path *pp)
+ }
+ 
+ int
++sysfs_set_session_tmo(struct multipath *mpp, struct path *pp, char *attr_path)
++{
++	char value[11];
++
++	if (mpp->fast_io_fail == 0)
++		return 0;
++	if (mpp->fast_io_fail == -1) {
++		condlog(3, "%s: can't switch off fast_io_fail_tmo on ISCSI",
++			pp->dev);
++		return 1;
++	}
++	snprintf(value, 11, "%u", mpp->fast_io_fail);
++	if (safe_snprintf(attr_path, SYSFS_PATH_SIZE,
++			  "/class/iscsi_session/session%d",
++			  pp->sg_id.transport_id)) {
++		condlog(0, "%s: attr path '/class/iscsi_session/session%d' too large", pp->dev, pp->sg_id.transport_id);
++		return 1;
++	}
++	if (sysfs_attr_set_value(attr_path, "recovery_tmo", value)) {
++		condlog(3, "%s Failed to set recovery_tmo, error %d", pp->dev,
++			errno);
++		return 1;
++	}
++	return 0;
++}
++
++int
+ sysfs_set_scsi_tmo (struct multipath *mpp)
+ {
+ 	char attr_path[SYSFS_PATH_SIZE];
+@@ -331,6 +364,8 @@ sysfs_set_scsi_tmo (struct multipath *mp
+ 		mpp->fast_io_fail = mpp->dev_loss - 1;
+ 	}
+ 	vector_foreach_slot(mpp->paths, pp, i) {
++		if (pp->sg_id.proto_id == SCSI_PROTOCOL_ISCSI)
++			return sysfs_set_session_tmo(mpp, pp, attr_path);
+ 		rport_id = find_rport_id(pp);
+ 		if (rport_id < 0) {
+ 			condlog(3, "failed to find rport_id for target%d:%d:%d", pp->sg_id.host_no, pp->sg_id.channel, pp->sg_id.scsi_id);
+@@ -371,7 +406,7 @@ sysfs_set_scsi_tmo (struct multipath *mp
+ 				return 1;
+ 			if (delayed_fast_io_fail) {
+ 	                        snprintf(value, 11, "%u", mpp->fast_io_fail);
+-        	                if (sysfs_attr_set_value(attr_path, "fast_io_fail_tmo", value))
++				if (sysfs_attr_set_value(attr_path, "fast_io_fail_tmo", value))
+                         	        return 1;
+ 			}
+ 		}
+@@ -642,7 +677,7 @@ scsi_sysfs_pathinfo (struct path * pp, s
+ 	/*
+ 	 * target node name
+ 	 */
+-	if(!sysfs_get_fc_nodename(parent, pp->tgt_node_name,
++	if(!sysfs_get_fc_nodename(parent, pp,
+ 				 pp->sg_id.host_no,
+ 				 pp->sg_id.channel,
+ 				 pp->sg_id.scsi_id)) {
+Index: multipath-tools/libmultipath/structs.h
+===================================================================
+--- multipath-tools.orig/libmultipath/structs.h
++++ multipath-tools/libmultipath/structs.h
+@@ -125,6 +125,13 @@ struct scsi_idlun {
+ 	int host_no;
+ };
+ 
++
++enum scsi_protocol {
++	SCSI_PROTOCOL_UNSPEC,
++	SCSI_PROTOCOL_FCP,
++	SCSI_PROTOCOL_ISCSI,
++};
++
+ struct sg_id {
+ 	int host_no;
+ 	int channel;
+@@ -132,8 +139,8 @@ struct sg_id {
+ 	int lun;
+ 	short h_cmd_per_lun;
+ 	short d_queue_depth;
+-	int unused1;
+-	int unused2;
++	enum scsi_protocol proto_id;
++	unsigned int transport_id;
+ };
+ 
+ struct scsi_dev {

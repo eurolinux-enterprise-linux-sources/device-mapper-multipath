@@ -1,0 +1,17 @@
+---
+ libmultipath/callout.c |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+Index: multipath-tools/libmultipath/callout.c
+===================================================================
+--- multipath-tools.orig/libmultipath/callout.c
++++ multipath-tools/libmultipath/callout.c
+@@ -135,7 +135,7 @@ int execute_program(char *path, char *va
+ 			if (status == 0)
+ 				retval = 0;
+ 			else
+-				condlog(0, "%s exitted with %d", argv[0], status);
++				condlog(3, "%s exitted with %d", argv[0], status);
+ 		}
+ 		else if (WIFSIGNALED(status))
+ 			condlog(0, "%s was terminated by signal %d", argv[0], WTERMSIG(status));

@@ -1,0 +1,368 @@
+---
+ Makefile.inc                       |    6 +++++-
+ cciss_id/Makefile                  |    1 -
+ kpartx/dasd.c                      |    4 +++-
+ libmultipath/Makefile              |    2 ++
+ libmultipath/alias.c               |    3 ++-
+ libmultipath/callout.c             |    3 ++-
+ libmultipath/checkers/Makefile     |    2 +-
+ libmultipath/configure.c           |    2 +-
+ libmultipath/file.c                |    3 ++-
+ libmultipath/finder.c              |    3 ++-
+ libmultipath/log.c                 |   16 ++++++++--------
+ libmultipath/log.h                 |    2 +-
+ libmultipath/prioritizers/Makefile |    2 +-
+ libmultipath/prioritizers/alua.c   |    2 ++
+ libmultipath/prioritizers/hds.c    |    2 +-
+ multipath/Makefile                 |    2 +-
+ multipathd/Makefile                |    2 +-
+ multipathd/main.c                  |   22 +++++++++++++++++-----
+ 18 files changed, 52 insertions(+), 27 deletions(-)
+
+Index: multipath-tools/Makefile.inc
+===================================================================
+--- multipath-tools.orig/Makefile.inc
++++ multipath-tools/Makefile.inc
+@@ -35,7 +35,11 @@ libdir	    = $(prefix)/$(LIB)/multipath
+ GZIP        = /bin/gzip -9 -c
+ INSTALL_PROGRAM = install
+ 
+-OPTFLAGS     = -pipe -g -Wall -Wunused -Wstrict-prototypes
++ifndef RPM_OPT_FLAGS
++	RPM_OPT_FLAGS = -O2 -g -pipe -Wall -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector --param=ssp-buffer-size=4
++endif
++
++OPTFLAGS     = $(RPM_OPT_FLAGS) -Wunused -Wstrict-prototypes
+ CFLAGS	     = $(OPTFLAGS) -fPIC -DLIB_STRING=\"${LIB}\"
+ SHARED_FLAGS = -shared
+ 
+Index: multipath-tools/kpartx/dasd.c
+===================================================================
+--- multipath-tools.orig/kpartx/dasd.c
++++ multipath-tools/kpartx/dasd.c
+@@ -46,6 +46,8 @@ unsigned long long sectors512(unsigned l
+ 	return sectors * (blocksize >> 9);
+ }
+ 
++typedef unsigned int __attribute__((__may_alias__)) uint_alias;
++
+ /*
+  */
+ int 
+@@ -169,7 +171,7 @@ read_dasd_pt(int fd, struct slice all, s
+ 		/*
+ 		 * VM style CMS1 labeled disk
+ 		 */
+-		unsigned int *label = (unsigned int *) &vlabel;
++		uint_alias *label =  (uint_alias *) &vlabel;
+ 
+ 		blocksize = label[4];
+ 		if (label[14] != 0) {
+Index: multipath-tools/libmultipath/alias.c
+===================================================================
+--- multipath-tools.orig/libmultipath/alias.c
++++ multipath-tools/libmultipath/alias.c
+@@ -187,10 +187,11 @@ allocate_binding(int fd, char *wwid, int
+ 		return NULL;
+ 	}
+ 	if (write_all(fd, buf, strlen(buf)) != strlen(buf)){
++		int unused;
+ 		condlog(0, "Cannot write binding to bindings file : %s",
+ 			strerror(errno));
+ 		/* clear partial write */
+-		ftruncate(fd, offset);
++		unused = ftruncate(fd, offset);
+ 		return NULL;
+ 	}
+ 	c = strchr(buf, ' ');
+Index: multipath-tools/libmultipath/callout.c
+===================================================================
+--- multipath-tools.orig/libmultipath/callout.c
++++ multipath-tools/libmultipath/callout.c
+@@ -87,7 +87,8 @@ int execute_program(char *path, char *va
+ 		null_fd = open("/dev/null", O_WRONLY);
+ 		if (null_fd > 0) {
+ 			close(STDERR_FILENO);
+-			dup(null_fd);
++			if (dup(null_fd) < 0)
++				return -1;
+ 			close(null_fd);
+ 		}
+ 
+Index: multipath-tools/libmultipath/configure.c
+===================================================================
+--- multipath-tools.orig/libmultipath/configure.c
++++ multipath-tools/libmultipath/configure.c
+@@ -172,7 +172,7 @@ select_action (struct multipath * mpp, v
+ 	if (!find_mp_by_wwid(curmp, mpp->wwid)) {
+ 		condlog(2, "%s: remove (wwid changed)", cmpp->alias);
+ 		dm_flush_map(mpp->alias);
+-		strncat(cmpp->wwid, mpp->wwid, WWID_SIZE);
++		strncpy(cmpp->wwid, mpp->wwid, WWID_SIZE);
+ 		drop_multipath(curmp, cmpp->wwid, KEEP_PATHS);
+ 		mpp->action = ACT_CREATE;
+ 		condlog(3, "%s: set ACT_CREATE (map wwid change)",
+Index: multipath-tools/libmultipath/file.c
+===================================================================
+--- multipath-tools.orig/libmultipath/file.c
++++ multipath-tools/libmultipath/file.c
+@@ -162,11 +162,12 @@ open_file(char *file, int *can_write, ch
+ 		/* If file is empty, write the header */
+ 		size_t len = strlen(header);
+ 		if (write_all(fd, header, len) != len) {
++			int unused;
+ 			condlog(0,
+ 				"Cannot write header to file %s : %s", file,
+ 				strerror(errno));
+ 			/* cleanup partially written header */
+-			ftruncate(fd, 0);
++			unused = ftruncate(fd, 0);
+ 			goto fail;
+ 		}
+ 		fsync(fd);
+Index: multipath-tools/libmultipath/finder.c
+===================================================================
+--- multipath-tools.orig/libmultipath/finder.c
++++ multipath-tools/libmultipath/finder.c
+@@ -70,9 +70,10 @@ write_out_wwid(int fd, char *wwid) {
+ 		return -1;
+ 	}
+ 	if (write_all(fd, buf, strlen(buf)) != strlen(buf)) {
++		int unused;
+ 		condlog(0, "cannot write wwid to wwids file : %s",
+ 			strerror(errno));
+-		ftruncate(fd, offset);
++		unused = ftruncate(fd, offset);
+ 		return -1;
+ 	}
+ 	return 1;
+Index: multipath-tools/libmultipath/prioritizers/alua.c
+===================================================================
+--- multipath-tools.orig/libmultipath/prioritizers/alua.c
++++ multipath-tools/libmultipath/prioritizers/alua.c
+@@ -45,12 +45,14 @@ static const char *aas_print_string(int 
+ {
+ 	rc &= 0x7f;
+ 
++#ifndef TPG_PREF
+ 	if (rc & 0x70)
+ 		return aas_string[AAS_RESERVED];
+ 	rc &= 0x0f;
+ 	if (rc > AAS_RESERVED && rc < AAS_OFFLINE)
+ 		return aas_string[AAS_RESERVED];
+ 	else
++#endif
+ 		return aas_string[rc];
+ }
+ 
+Index: multipath-tools/libmultipath/prioritizers/hds.c
+===================================================================
+--- multipath-tools.orig/libmultipath/prioritizers/hds.c
++++ multipath-tools/libmultipath/prioritizers/hds.c
+@@ -86,7 +86,7 @@
+ int hds_modular_prio (const char *dev, int fd)
+ {
+ 	int k;
+-	char vendor[8];
++	char vendor[9];
+ 	char product[32];
+ 	char serial[32];
+ 	char ldev[32];
+Index: multipath-tools/multipathd/main.c
+===================================================================
+--- multipath-tools.orig/multipathd/main.c
++++ multipath-tools/multipathd/main.c
+@@ -1647,12 +1647,23 @@ daemonize(void)
+ 	}
+ 
+ 	close(STDIN_FILENO);
+-	dup(in_fd);
++	if (dup(in_fd) < 0) {
++		fprintf(stderr, "cannot dup /dev/null to stdin : %s\n",
++			strerror(errno));
++			_exit(0);
++	}
+ 	close(STDOUT_FILENO);
+-	dup(out_fd);
++	if (dup(out_fd) < 0) {
++		fprintf(stderr, "cannot dup /dev/console to stdout : %s\n",
++			strerror(errno));
++			_exit(0);
++	}
+ 	close(STDERR_FILENO);
+-	dup(out_fd);
+-
++	if (dup(out_fd) < 0) {
++		fprintf(stderr, "cannot dup /dev/console to stderr : %s\n",
++			strerror(errno));
++			_exit(0);
++	}
+ 	close(in_fd);
+ 	close(out_fd);
+ 	if (chdir("/") < 0)
+@@ -1679,7 +1690,8 @@ main (int argc, char *argv[])
+ 	}
+ 
+ 	/* make sure we don't lock any path */
+-	chdir("/");
++	if (chdir("/") < 0)
++		fprintf(stderr, "can't dir to root directory\n");
+ 	umask(umask(077) | 022);
+ 
+ 	conf = alloc_config();
+Index: multipath-tools/libmultipath/log.c
+===================================================================
+--- multipath-tools.orig/libmultipath/log.c
++++ multipath-tools/libmultipath/log.c
+@@ -26,10 +26,10 @@ static void dump_logarea (void)
+ 	for (msg = (struct logmsg *)la->head; (void *)msg != la->tail;
+ 	     msg = msg->next)
+ 		logdbg(stderr, "|%p |%p |%i   |%s\n", (void *)msg, msg->next,
+-				msg->prio, (char *)&msg->str);
++				msg->prio, msg->str);
+ 
+ 	logdbg(stderr, "|%p |%p |%i   |%s\n", (void *)msg, msg->next,
+-			msg->prio, (char *)&msg->str);
++			msg->prio, msg->str);
+ 
+ 	logdbg(stderr, "\n\n");
+ }
+@@ -107,7 +107,7 @@ int log_enqueue (int prio, const char * 
+ 
+ 	if (!la->empty) {
+ 		fwd = sizeof(struct logmsg) +
+-		      strlen((char *)&lastmsg->str) * sizeof(char) + 1;
++		      strlen(lastmsg->str) * sizeof(char) + 1;
+ 		la->tail += ALIGN(fwd, sizeof(void *));
+ 	}
+ 	vsnprintf(buff, MAX_MSG_SIZE, fmt, ap);
+@@ -142,12 +142,12 @@ int log_enqueue (int prio, const char * 
+ 	la->empty = 0;
+ 	msg = (struct logmsg *)la->tail;
+ 	msg->prio = prio;
+-	strcpy((void *)&msg->str, buff);
++	strcpy(msg->str, buff);
+ 	lastmsg->next = la->tail;
+ 	msg->next = la->head;
+ 
+ 	logdbg(stderr, "enqueue: %p, %p, %i, %s\n", (void *)msg, msg->next,
+-		msg->prio, (char *)&msg->str);
++		msg->prio, msg->str);
+ 
+ #if LOGDBG
+ 	dump_logarea();
+@@ -164,7 +164,7 @@ int log_dequeue (void * buff)
+ 	if (la->empty)
+ 		return 1;
+ 
+-	int len = strlen((char *)&src->str) * sizeof(char) +
++	int len = strlen(src->str) * sizeof(char) +
+ 		  sizeof(struct logmsg) + 1;
+ 
+ 	dst->prio = src->prio;
+@@ -177,7 +177,7 @@ int log_dequeue (void * buff)
+ 		lst->next = la->head;
+ 	}
+ 	logdbg(stderr, "dequeue: %p, %p, %i, %s\n",
+-		(void *)src, src->next, src->prio, (char *)&src->str);
++		(void *)src, src->next, src->prio, src->str);
+ 
+ 	memset((void *)src, 0,  len);
+ 
+@@ -191,5 +191,5 @@ void log_syslog (void * buff)
+ {
+ 	struct logmsg * msg = (struct logmsg *)buff;
+ 
+-	syslog(msg->prio, "%s", (char *)&msg->str);
++	syslog(msg->prio, "%s", msg->str);
+ }
+Index: multipath-tools/libmultipath/log.h
+===================================================================
+--- multipath-tools.orig/libmultipath/log.h
++++ multipath-tools/libmultipath/log.h
+@@ -17,7 +17,7 @@
+ struct logmsg {
+ 	short int prio;
+ 	void * next;
+-	char * str;
++	char str[0];
+ };
+ 
+ struct logarea {
+Index: multipath-tools/cciss_id/Makefile
+===================================================================
+--- multipath-tools.orig/cciss_id/Makefile
++++ multipath-tools/cciss_id/Makefile
+@@ -25,7 +25,6 @@
+ include ../Makefile.inc
+ 
+ OBJS = cciss_id.o
+-CFLAGS = -pipe -g -Wall -Wunused -Wstrict-prototypes
+ 
+ LDFLAGS = -ldevmapper
+ 
+Index: multipath-tools/libmultipath/Makefile
+===================================================================
+--- multipath-tools.orig/libmultipath/Makefile
++++ multipath-tools/libmultipath/Makefile
+@@ -20,6 +20,8 @@ ifneq ($(strip $(LIBDM_API_FLUSH)),0)
+ 	CFLAGS += -DLIBDM_API_FLUSH -D_GNU_SOURCE
+ endif
+ 
++CFLAGS += -pthread
++
+ all: $(LIBS)
+ 
+ $(LIBS): $(OBJS)
+Index: multipath-tools/libmultipath/checkers/Makefile
+===================================================================
+--- multipath-tools.orig/libmultipath/checkers/Makefile
++++ multipath-tools/libmultipath/checkers/Makefile
+@@ -14,7 +14,7 @@ LIBS= \
+ 	libcheckhp_sw.so \
+ 	libcheckrdac.so
+ 
+-CFLAGS += -I..
++CFLAGS += -I.. -pthread
+ 
+ all: $(LIBS)
+ 
+Index: multipath-tools/libmultipath/prioritizers/Makefile
+===================================================================
+--- multipath-tools.orig/libmultipath/prioritizers/Makefile
++++ multipath-tools/libmultipath/prioritizers/Makefile
+@@ -16,7 +16,7 @@ LIBS = \
+ 	libpriohds.so \
+ 	libprioweighted.so \
+ 
+-CFLAGS += -I..
++CFLAGS += -I.. -pthread
+ 
+ all: $(LIBS)
+ 
+Index: multipath-tools/multipath/Makefile
+===================================================================
+--- multipath-tools.orig/multipath/Makefile
++++ multipath-tools/multipath/Makefile
+@@ -7,7 +7,7 @@ include ../Makefile.inc
+ OBJS = main.o
+ 
+ CFLAGS += -I$(multipathdir)
+-LDFLAGS += -lpthread -ldevmapper -ldl -lmultipath -L$(multipathdir)
++LDFLAGS += -pthread -ldevmapper -ldl -lmultipath -L$(multipathdir)
+ 
+ EXEC = multipath
+ 
+Index: multipath-tools/multipathd/Makefile
+===================================================================
+--- multipath-tools.orig/multipathd/Makefile
++++ multipath-tools/multipathd/Makefile
+@@ -6,7 +6,7 @@ include ../Makefile.inc
+ # basic flags setting
+ #
+ CFLAGS += -I$(multipathdir)
+-LDFLAGS += -lpthread -ldevmapper -lreadline -lncurses -ldl \
++LDFLAGS += -pthread -ldevmapper -lreadline -lncurses -ldl \
+ 	   -lmultipath -L$(multipathdir)
+ 
+ #

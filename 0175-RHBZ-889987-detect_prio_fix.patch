@@ -1,0 +1,28 @@
+---
+ libmultipath/propsel.c |   13 ++++++++++---
+ 1 file changed, 10 insertions(+), 3 deletions(-)
+
+Index: multipath-tools/libmultipath/propsel.c
+===================================================================
+--- multipath-tools.orig/libmultipath/propsel.c
++++ multipath-tools/libmultipath/propsel.c
+@@ -333,9 +333,16 @@ select_getuid (struct path * pp)
+ struct prio *
+ detect_prio(struct path * pp)
+ {
+-	if (get_target_port_group_support(pp->fd) > 0)
+-		return prio_lookup(PRIO_ALUA);
+-	return NULL;
++	int ret;
++
++	if (get_target_port_group_support(pp->fd) <= 0)
++		return NULL;
++	ret = get_target_port_group(pp->fd);
++	if (ret < 0)
++		return NULL;
++	if (get_asymmetric_access_state(pp->fd, ret) < 0)
++		return NULL;
++	return prio_lookup(PRIO_ALUA);
+ }
+ 
+ extern int

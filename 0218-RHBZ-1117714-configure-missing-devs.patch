@@ -1,0 +1,65 @@
+---
+ libmultipath/devmapper.c |   13 +++++++------
+ multipathd/main.c        |   18 ++++++++++++------
+ 2 files changed, 19 insertions(+), 12 deletions(-)
+
+Index: multipath-tools/libmultipath/devmapper.c
+===================================================================
+--- multipath-tools.orig/libmultipath/devmapper.c
++++ multipath-tools/libmultipath/devmapper.c
+@@ -792,12 +792,13 @@ dm_get_maps (vector mp)
+ 			goto out1;
+ 
+ 		if (info > 0) {
+-			if (dm_get_map(names->name, &mpp->size, mpp->params))
+-				goto out1;
+-
+-			if (dm_get_status(names->name, mpp->status))
+-				goto out1;
+-
++			if (dm_get_map(names->name, &mpp->size, mpp->params) ||
++			    dm_get_status(names->name, mpp->status)) {
++				/* device may have been removed extarnally */
++				free_multipath(mpp, KEEP_PATHS);
++				mpp = NULL;
++				goto next;
++			}
+ 			dm_get_uuid(names->name, mpp->wwid);
+ 			dm_get_info(names->name, &mpp->dmi);
+ 		}
+Index: multipath-tools/multipathd/main.c
+===================================================================
+--- multipath-tools.orig/multipathd/main.c
++++ multipath-tools/multipathd/main.c
+@@ -687,7 +687,7 @@ map_discovery (struct vectors * vecs)
+ 
+ 	vector_foreach_slot (vecs->mpvec, mpp, i)
+ 		if (setup_multipath(vecs, mpp))
+-			return 1;
++			i--;
+ 
+ 	return 0;
+ }
+@@ -1382,11 +1382,17 @@ configure (struct vectors * vecs, int st
+ 	 * start dm event waiter threads for these new maps
+ 	 */
+ 	vector_foreach_slot(vecs->mpvec, mpp, i) {
+-		if (setup_multipath(vecs, mpp))
+-			return 1;
+-		if (start_waiters)
+-			if (start_waiter_thread(mpp, vecs))
+-				return 1;
++		if (setup_multipath(vecs, mpp)) {
++			i--;
++			continue;
++		}
++		if (start_waiters) {
++			if (start_waiter_thread(mpp, vecs)) {
++				condlog(0, "cannot start waiter thread for %s. Removing", mpp->alias);
++				remove_map(mpp, vecs, 1);
++				i--;
++			}
++		}
+ 	}
+ 	return 0;
+ }

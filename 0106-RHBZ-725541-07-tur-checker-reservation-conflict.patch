@@ -1,0 +1,23 @@
+---
+ libmultipath/checkers/tur.c |    8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+Index: multipath-tools/libmultipath/checkers/tur.c
+===================================================================
+--- multipath-tools.orig/libmultipath/checkers/tur.c
++++ multipath-tools/libmultipath/checkers/tur.c
+@@ -154,6 +154,14 @@ libcheck_check (struct checker * c)
+ 		MSG(c, MSG_TUR_DOWN);
+ 		return PATH_DOWN;
+ 	}
++	if ((io_hdr.status & 0x7e) == 0x18) {
++		/*
++		 * SCSI-3 arrays might return
++		 * reservation conflict on TUR
++		 */
++		MSG(c, MSG_TUR_UP);
++		return PATH_UP;
++	}
+ 	if (io_hdr.info & SG_INFO_OK_MASK) {
+ 		int key = 0, asc, ascq;
+ 

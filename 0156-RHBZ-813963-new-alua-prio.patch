@@ -1,0 +1,191 @@
+---
+ libmultipath/prio.h                   |    1 -
+ libmultipath/prioritizers/Makefile    |   12 ++----------
+ libmultipath/prioritizers/alua.c      |   33 +++++++++++++++++----------------
+ libmultipath/prioritizers/alua_rtpg.c |    6 +-----
+ libmultipath/prioritizers/alua_spc3.h |    8 +-------
+ 5 files changed, 21 insertions(+), 39 deletions(-)
+
+Index: multipath-tools/libmultipath/prio.h
+===================================================================
+--- multipath-tools.orig/libmultipath/prio.h
++++ multipath-tools/libmultipath/prio.h
+@@ -16,7 +16,6 @@
+  * Known prioritizers for use in hwtable.c
+  */
+ #define PRIO_ALUA "alua"
+-#define PRIO_TPG_PREF "tpg_pref"
+ #define PRIO_CONST "const"
+ #define PRIO_EMC "emc"
+ #define PRIO_HDS "hds"
+Index: multipath-tools/libmultipath/prioritizers/Makefile
+===================================================================
+--- multipath-tools.orig/libmultipath/prioritizers/Makefile
++++ multipath-tools/libmultipath/prioritizers/Makefile
+@@ -11,7 +11,6 @@ LIBS = \
+ 	libprioemc.so \
+ 	libpriordac.so \
+ 	libprioalua.so \
+-	libpriotpg_pref.so \
+ 	libprioontap.so \
+ 	libpriohds.so \
+ 	libprioweighted.so \
+@@ -23,22 +22,15 @@ all: $(LIBS)
+ libprioalua.so: alua.o alua_rtpg.o
+ 	$(CC) $(SHARED_FLAGS) -o $@ $^
+ 
+-libpriotpg_pref.so: pref.o pref_rtpg.o
+-	$(CC) $(SHARED_FLAGS) -o $@ $^
+-
+ libprio%.so: %.o
+ 	$(CC) $(SHARED_FLAGS) -o $@ $^
+ 
+-pref.o: alua.c
+-	$(CC) $(CFLAGS) -DTPG_PREF -c -o $@ $<
+-
+-pref_rtpg.o: alua_rtpg.c
+-	$(CC) $(CFLAGS) -DTPG_PREF -c -o $@ $<
+-
+ install: $(LIBS)
+ 	$(INSTALL_PROGRAM) -m 755 libprio*.so $(DESTDIR)$(libdir)
++	ln -sf libprioalua.so $(DESTDIR)$(libdir)/libpriotpg_pref.so
+ 
+ uninstall:
++	rm -f $(DESTDIR)$(libdir)/libpriotpg_pref.so
+ 	for file in $(LIBS); do rm -f $(DESTDIR)$(libdir)/$$file; done
+ 
+ clean:
+Index: multipath-tools/libmultipath/prioritizers/alua.c
+===================================================================
+--- multipath-tools.orig/libmultipath/prioritizers/alua.c
++++ multipath-tools/libmultipath/prioritizers/alua.c
+@@ -26,33 +26,26 @@
+ #define ALUA_PRIO_NO_INFORMATION		5
+ 
+ static const char * aas_string[] = {
+-#ifdef TPG_PREF
+-	[AAS_OPTIMIZED]         = "preferred",
+-	[AAS_STANDBY]           = "non-preferred",
+-#else
+-	[AAS_OPTIMIZED]         = "active/optimized",
+-	[AAS_NON_OPTIMIZED]     = "active/non-optimized",
+-	[AAS_STANDBY]           = "standby",
+-	[AAS_UNAVAILABLE]       = "unavailable",
+-	[AAS_LBA_DEPENDENT]     = "lba dependent",
+-	[AAS_RESERVED]          = "invalid/reserved",
+-	[AAS_OFFLINE]           = "offline",
+-	[AAS_TRANSITIONING]     = "transitioning between states",
+-#endif
++	[AAS_OPTIMIZED]		= "active/optimized",
++	[AAS_NON_OPTIMIZED]	= "active/non-optimized",
++	[AAS_STANDBY]		= "standby",
++	[AAS_UNAVAILABLE]	= "unavailable",
++	[AAS_LBA_DEPENDENT]	= "lba dependent",
++	[AAS_RESERVED]		= "invalid/reserved",
++	[AAS_OFFLINE]		= "offline",
++	[AAS_TRANSITIONING]	= "transitioning between states",
+ };
+ 
+ static const char *aas_print_string(int rc)
+ {
+ 	rc &= 0x7f;
+ 
+-#ifndef TPG_PREF
+ 	if (rc & 0x70)
+ 		return aas_string[AAS_RESERVED];
+ 	rc &= 0x0f;
+ 	if (rc > AAS_RESERVED && rc < AAS_OFFLINE)
+ 		return aas_string[AAS_RESERVED];
+ 	else
+-#endif
+ 		return aas_string[rc];
+ }
+ 
+@@ -61,6 +54,7 @@ get_alua_info(int fd)
+ {
+ 	int	rc;
+ 	int	tpg;
++	int	aas;
+ 
+ 	rc = get_target_port_group_support(fd);
+ 	if (rc < 0)
+@@ -77,6 +71,7 @@ get_alua_info(int fd)
+ 	rc = get_asymmetric_access_state(fd, tpg);
+ 	if (rc < 0)
+ 		return -ALUA_PRIO_GETAAS_FAILED;
++	aas = (rc & 0x0f);
+ 
+ 	condlog(3, "aas = %02x [%s]%s", rc, aas_print_string(rc),
+ 		(rc & 0x80) ? " [preferred]" : "");
+@@ -86,13 +81,17 @@ get_alua_info(int fd)
+ int getprio (struct path * pp)
+ {
+ 	int rc;
++	int aas;
++	int priopath;
+ 
+ 	if (pp->fd < 0)
+ 		return -ALUA_PRIO_NO_INFORMATION;
+ 
+ 	rc = get_alua_info(pp->fd);
+ 	if (rc >= 0) {
+-		switch(rc) {
++		aas = (rc & 0x0f);
++		priopath = (rc & 0x80);
++		switch(aas) {
+ 			case AAS_OPTIMIZED:
+ 				rc = 50;
+ 				break;
+@@ -108,6 +107,8 @@ int getprio (struct path * pp)
+ 			default:
+ 				rc = 0;
+ 		}
++		if (priopath)
++			rc += 80;
+ 	} else {
+ 		switch(-rc) {
+ 			case ALUA_PRIO_NOT_SUPPORTED:
+Index: multipath-tools/libmultipath/prioritizers/alua_rtpg.c
+===================================================================
+--- multipath-tools.orig/libmultipath/prioritizers/alua_rtpg.c
++++ multipath-tools/libmultipath/prioritizers/alua_rtpg.c
+@@ -287,7 +287,7 @@ get_asymmetric_access_state(int fd, unsi
+ 	memset(buf, 0, buflen);
+ 	rc = do_rtpg(fd, buf, buflen);
+ 	if (rc < 0)
+-		return rc;
++		goto out;
+ 	scsi_buflen = (buf[0] << 24 | buf[1] << 16 | buf[2] << 8 | buf[3]) + 4;
+ 	if (buflen < scsi_buflen) {
+ 		free(buf);
+@@ -314,11 +314,7 @@ get_asymmetric_access_state(int fd, unsi
+ 					"group.\n");
+ 			} else {
+ 				PRINT_DEBUG("pref=%i\n", dscr->b0);
+-#ifdef TPG_PREF
+-				rc = rtpg_tpg_dscr_get_pref(dscr);
+-#else
+ 				rc = rtpg_tpg_dscr_get_aas(dscr);
+-#endif
+ 			}
+ 		}
+ 	}
+Index: multipath-tools/libmultipath/prioritizers/alua_spc3.h
+===================================================================
+--- multipath-tools.orig/libmultipath/prioritizers/alua_spc3.h
++++ multipath-tools/libmultipath/prioritizers/alua_spc3.h
+@@ -303,13 +303,7 @@ struct rtpg_tpg_dscr {
+ static inline int
+ rtpg_tpg_dscr_get_aas(struct rtpg_tpg_dscr *d)
+ {
+-	return (d->b0 & 0x0f);
+-}
+-
+-static inline int
+-rtpg_tpg_dscr_get_pref(struct rtpg_tpg_dscr *d)
+-{
+-	return ((d->b0 & 0x80)?AAS_OPTIMIZED:AAS_STANDBY);
++	return (d->b0 & 0x8f);
+ }
+ 
+ struct rtpg_data {

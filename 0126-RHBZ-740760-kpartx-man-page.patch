@@ -1,0 +1,18 @@
+---
+ kpartx/kpartx.8 |    3 +++
+ 1 file changed, 3 insertions(+)
+
+Index: multipath-tools/kpartx/kpartx.8
+===================================================================
+--- multipath-tools.orig/kpartx/kpartx.8
++++ multipath-tools/kpartx/kpartx.8
+@@ -32,6 +32,9 @@ force creation of mappings; overrides 'n
+ .B \-g
+ force GUID partition table (GPT)
+ .TP
++.B \-s
++sync mode. Don't return until the partitions are created
++.TP
+ .B \-v
+ Operate verbosely
+ .SH "SEE ALSO"

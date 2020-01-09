@@ -1,0 +1,41 @@
+---
+ libmultipath/discovery.c |    5 +++--
+ libmultipath/structs.h   |    2 +-
+ 2 files changed, 4 insertions(+), 3 deletions(-)
+
+Index: multipath-tools/libmultipath/discovery.c
+===================================================================
+--- multipath-tools.orig/libmultipath/discovery.c
++++ multipath-tools/libmultipath/discovery.c
+@@ -779,7 +779,8 @@ path_offline(struct path * pp)
+ 
+ 	condlog(3, "%s: state = %s", pp->dev, buff);
+ 
+-	if (!strncmp(buff, "offline", 7)) {
++	if (!strncmp(buff, "offline", 7) ||
++	    !strncmp(buff, "transport-offline", 17)) {
+ 		pp->offline = 1;
+ 		return PATH_DOWN;
+ 	}
+@@ -787,7 +788,7 @@ path_offline(struct path * pp)
+ 
+ 	if (pp->bus != SYSFS_BUS_SCSI)
+ 		return PATH_UP;
+-	if (!strncmp(buff, "blocked", 7))
++	if (!strncmp(buff, "blocked", 7) || !strncmp(buff, "quiesce", 7))
+ 		return PATH_PENDING;
+ 	else if (!strncmp(buff, "running", 7))
+ 		return PATH_UP;
+Index: multipath-tools/libmultipath/structs.h
+===================================================================
+--- multipath-tools.orig/libmultipath/structs.h
++++ multipath-tools/libmultipath/structs.h
+@@ -18,7 +18,7 @@
+ #define SCSI_VENDOR_SIZE	9
+ #define SCSI_PRODUCT_SIZE	17
+ #define SCSI_REV_SIZE		5
+-#define SCSI_STATE_SIZE		18
++#define SCSI_STATE_SIZE		19
+ 
+ #define NO_PATH_RETRY_UNDEF	0
+ #define NO_PATH_RETRY_FAIL	-1

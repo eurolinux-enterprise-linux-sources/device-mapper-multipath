@@ -1,0 +1,77 @@
+---
+ libmultipath/devmapper.c |    8 +++++---
+ libmultipath/util.c      |    4 ++--
+ libmultipath/util.h      |    2 +-
+ 3 files changed, 8 insertions(+), 6 deletions(-)
+
+Index: multipath-tools/libmultipath/devmapper.c
+===================================================================
+--- multipath-tools.orig/libmultipath/devmapper.c
++++ multipath-tools/libmultipath/devmapper.c
+@@ -20,7 +20,7 @@
+ #include "memory.h"
+ #include "devmapper.h"
+ #include "config.h"
+-
++#include "util.h"
+ #include "log_pthread.h"
+ #include <sys/types.h>
+ #include <time.h>
+@@ -943,6 +943,7 @@ dm_remove_partmaps (const char * mapname
+ 	char params[PARAMS_SIZE];
+ 	unsigned long long size;
+ 	char dev_t[32];
++	char devbasename[FILE_NAME_SIZE];
+ 	int r = 1;
+ 
+ 	if (!(dmt = dm_task_create(DM_DEVICE_LIST)))
+@@ -964,6 +965,7 @@ dm_remove_partmaps (const char * mapname
+ 	if (dm_dev_t(mapname, &dev_t[0], 32))
+ 		goto out;
+ 
++	basenamecpy(mapname, devbasename);
+ 	do {
+ 		if (
+ 		    /*
+@@ -972,10 +974,10 @@ dm_remove_partmaps (const char * mapname
+ 		    (dm_type(names->name, TGT_PART) > 0) &&
+ 
+ 		    /*
+-		     * and the multipath mapname and the part mapname start
++		     * and the multipath name and the part mapname start
+ 		     * the same
+ 		     */
+-		    !strncmp(names->name, mapname, strlen(mapname)) &&
++		    !strncmp(names->name, devbasename, strlen(devbasename)) &&
+ 
+ 		    /*
+ 		     * and the opencount is 0 for us to allow removal
+Index: multipath-tools/libmultipath/util.c
+===================================================================
+--- multipath-tools.orig/libmultipath/util.c
++++ multipath-tools/libmultipath/util.c
+@@ -39,9 +39,9 @@ strchop(char *str)
+ }
+ 
+ void
+-basenamecpy (char * str1, char * str2)
++basenamecpy (const char * str1, char * str2)
+ {
+-	char *p = str1 + (strlen(str1) - 1);
++	const char *p = str1 + (strlen(str1) - 1);
+ 
+ 	while (*--p != '/' && p != str1)
+ 		continue;
+Index: multipath-tools/libmultipath/util.h
+===================================================================
+--- multipath-tools.orig/libmultipath/util.h
++++ multipath-tools/libmultipath/util.h
+@@ -3,7 +3,7 @@
+ 
+ int strcmp_chomp(char *, char *);
+ void strchop(char *);
+-void basenamecpy (char * src, char * dst);
++void basenamecpy (const char * src, char * dst);
+ int filepresent (char * run);
+ int get_word (char * sentence, char ** word);
+ size_t strlcpy(char *dst, const char *src, size_t size);

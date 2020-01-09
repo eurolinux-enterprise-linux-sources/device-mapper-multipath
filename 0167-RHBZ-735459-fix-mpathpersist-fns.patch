@@ -1,0 +1,68 @@
+---
+ libmultipath/dict.c       |   31 +++++++++++++++++++++++++++++--
+ multipathd/cli_handlers.c |    2 +-
+ 2 files changed, 30 insertions(+), 3 deletions(-)
+
+Index: multipath-tools/libmultipath/dict.c
+===================================================================
+--- multipath-tools.orig/libmultipath/dict.c
++++ multipath-tools/libmultipath/dict.c
+@@ -1989,8 +1989,22 @@ snprint_mp_user_friendly_names (char * b
+ static int
+ snprint_mp_reservation_key (char * buff, int len, void * data)
+ {
++	int i;
++	unsigned char *keyp;
++	uint64_t prkey = 0;
+ 	struct mpentry * mpe = (struct mpentry *)data;
+-	return snprintf(buff, len, "%s" , mpe->reservation_key);
++
++	if (!mpe->reservation_key)
++		return 0;
++	keyp = (unsigned char *)mpe->reservation_key;
++	for (i = 0; i < 8; i++) {
++		if (i > 0)
++			prkey <<= 8;
++		prkey |= *keyp;
++		keyp++;
++	}
++
++	return snprintf(buff, len, "0x%" PRIx64, prkey);
+ }
+ 
+ 
+@@ -2603,7 +2617,20 @@ snprint_def_user_friendly_names (char * 
+ static int
+ snprint_def_reservation_key(char * buff, int len, void * data)
+ {
+-	return snprintf(buff, len, "%s", conf->reservation_key);
++	int i;
++	unsigned char *keyp;
++	uint64_t prkey = 0;
++
++	if (!conf->reservation_key)
++		return 0;
++	keyp = (unsigned char *)conf->reservation_key;
++	for (i = 0; i < 8; i++) {
++		if (i > 0)
++			prkey <<= 8;
++		prkey |= *keyp;
++		keyp++;
++	}
++	return snprintf(buff, len, "0x%" PRIx64, prkey);
+ }
+ 
+ static int
+Index: multipath-tools/multipathd/cli_handlers.c
+===================================================================
+--- multipath-tools.orig/multipathd/cli_handlers.c
++++ multipath-tools/multipathd/cli_handlers.c
+@@ -884,7 +884,7 @@ cli_getprstatus (void * v, char ** reply
+ 
+ 
+ 	sprintf(*reply,"%d",mpp->prflag);
+-	*reply[1]='\0';
++	(*reply)[1]='\0';
+ 
+ 
+ 	condlog(3, "%s: reply = %s", param, *reply);

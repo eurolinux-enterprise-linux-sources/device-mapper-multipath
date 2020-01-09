@@ -1,0 +1,73 @@
+---
+ libmultipath/waiter.c |   14 ++++++++++++--
+ multipathd/main.c     |    5 +++--
+ 2 files changed, 15 insertions(+), 4 deletions(-)
+
+Index: multipath-tools/libmultipath/waiter.c
+===================================================================
+--- multipath-tools.orig/libmultipath/waiter.c
++++ multipath-tools/libmultipath/waiter.c
+@@ -76,6 +76,7 @@ void stop_waiter_thread (struct multipat
+ 	condlog(2, "%s: stop event checker thread (%lu)", wp->mapname, thread);
+ 
+ 	pthread_cancel(thread);
++	pthread_kill(thread, SIGUSR1);
+ }
+ 
+ /*
+@@ -84,6 +85,7 @@ void stop_waiter_thread (struct multipat
+  */
+ int waiteventloop (struct event_thread *waiter)
+ {
++	sigset_t set, oldset;
+ 	int event_nr;
+ 	int r;
+ 
+@@ -114,13 +116,21 @@ int waiteventloop (struct event_thread *
+ 	dm_task_no_open_count(waiter->dmt);
+ 
+ 	/* wait */
++	sigemptyset(&set);
++	sigaddset(&set, SIGUSR1);
++	pthread_sigmask(SIG_UNBLOCK, &set, &oldset);
++
++	pthread_testcancel();
+ 	r = dm_task_run(waiter->dmt);
++	pthread_testcancel();
++
++	pthread_sigmask(SIG_SETMASK, &oldset, NULL);
++	dm_task_destroy(waiter->dmt);
++	waiter->dmt = NULL;
+ 
+ 	if (!r) /* wait interrupted by signal */
+ 		return -1;
+ 
+-	dm_task_destroy(waiter->dmt);
+-	waiter->dmt = NULL;
+ 	waiter->event_nr++;
+ 
+ 	/*
+Index: multipath-tools/multipathd/main.c
+===================================================================
+--- multipath-tools.orig/multipathd/main.c
++++ multipath-tools/multipathd/main.c
+@@ -1676,8 +1676,9 @@ child (void * param)
+ 
+ 	unlock(vecs->lock);
+ 	/* Now all the waitevent threads will start rushing in. */
++	/* freeing vecs isn't worth the races
+ 	while (vecs->lock.depth > 0) {
+-		sleep (1); /* This is weak. */
++		sleep (1);
+ 		condlog(3,"Have %d wait event checkers threads to de-alloc, waiting..\n", vecs->lock.depth);
+ 	}
+ 	pthread_mutex_destroy(vecs->lock.mutex);
+@@ -1686,7 +1687,7 @@ child (void * param)
+ 	vecs->lock.mutex = NULL;
+ 	FREE(vecs);
+ 	vecs = NULL;
+-
++	*/
+ 	condlog(2, "--------shut down-------");
+ 
+ 	if (logsink)

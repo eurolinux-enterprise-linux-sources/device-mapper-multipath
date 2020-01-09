@@ -1,0 +1,51 @@
+Given alias/wwid pair in config, if there is a mpath with the wwid
+and different alias, the mpath should be renamed to the given alias.
+If there is already other mpath with the alias, though, we could not
+simply rename it.
+However, we must NOT try to create a mpath with the given alias/wwid
+by changing the wwid (i.e. mappings) of the other mpath, that could
+corrupt data.
+
+The patch checks this case and give up processing.
+
+---
+ libmultipath/configure.c |   12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+Index: multipath-tools/libmultipath/configure.c
+===================================================================
+--- multipath-tools.orig/libmultipath/configure.c
++++ multipath-tools/libmultipath/configure.c
+@@ -152,6 +152,7 @@ static void
+ select_action (struct multipath * mpp, vector curmp, int force_reload)
+ {
+ 	struct multipath * cmpp;
++	struct multipath * cmpp_tmp;
+ 
+ 	cmpp = find_mp_by_alias(curmp, mpp->alias);
+ 
+@@ -171,7 +172,8 @@ select_action (struct multipath * mpp, v
+ 		return;
+ 	}
+ 
+-	if (!find_mp_by_wwid(curmp, mpp->wwid)) {
++	cmpp_tmp = find_mp_by_wwid(curmp, mpp->wwid);
++	if (!cmpp_tmp) {
+ 		condlog(2, "%s: remove (wwid changed)", cmpp->alias);
+ 		dm_flush_map(mpp->alias);
+ 		strncpy(cmpp->wwid, mpp->wwid, WWID_SIZE);
+@@ -182,6 +184,14 @@ select_action (struct multipath * mpp, v
+ 		return;
+ 	}
+ 
++	if (cmpp != cmpp_tmp) {
++		condlog(2, "%s: unable to rename %s to %s (%s is used by %s)",
++			mpp->wwid, cmpp_tmp->alias, mpp->alias,
++			mpp->alias, cmpp->wwid);
++		mpp->action = ACT_NOTHING;
++		return;
++	}
++
+ 	if (pathcount(mpp, PATH_UP) == 0) {
+ 		mpp->action = ACT_NOTHING;
+ 		condlog(3, "%s: set ACT_NOTHING (no usable path)",

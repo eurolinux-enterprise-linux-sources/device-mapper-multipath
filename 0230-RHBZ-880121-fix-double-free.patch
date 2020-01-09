@@ -1,0 +1,29 @@
+---
+ multipathd/main.c |   14 ++++++++++----
+ 1 file changed, 10 insertions(+), 4 deletions(-)
+
+Index: multipath-tools/multipathd/main.c
+===================================================================
+--- multipath-tools.orig/multipathd/main.c
++++ multipath-tools/multipathd/main.c
+@@ -284,10 +284,16 @@ ev_add_map (struct sysfs_device * dev, s
+ 	/*
+ 	 * now we can register the map
+ 	 */
+-	if (map_present && (mpp = add_map_without_path(vecs, minor, alias))) {
+-		sync_map_state(mpp);
+-		condlog(2, "%s: devmap %s added", alias, dev->kernel);
+-		return 0;
++	if (map_present) {
++		if ((mpp = add_map_without_path(vecs, minor, alias))) {
++			sync_map_state(mpp);
++			condlog(2, "%s: devmap %s added", alias, dev->kernel);
++			return 0;
++		}
++		else {
++			condlog(2, "%s: uev_add_map failed", dev->kernel);
++			return 1;
++		}
+ 	}
+ 	refwwid = get_refwwid(dev->kernel, DEV_DEVMAP, vecs->pathvec);
+ 

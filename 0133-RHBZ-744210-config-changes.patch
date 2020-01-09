@@ -1,0 +1,313 @@
+---
+ libmultipath/config.c  |   11 +++++
+ libmultipath/config.h  |    2 +
+ libmultipath/dict.c    |   98 +++++++++++++++++++++++++++++++++++++++++++++----
+ libmultipath/dict.h    |    1 
+ libmultipath/propsel.c |   14 ++++++-
+ libmultipath/structs.h |    6 +++
+ 6 files changed, 122 insertions(+), 10 deletions(-)
+
+Index: multipath-tools/libmultipath/config.c
+===================================================================
+--- multipath-tools.orig/libmultipath/config.c
++++ multipath-tools/libmultipath/config.c
+@@ -311,6 +311,7 @@ merge_hwe (struct hwentry * hwe1, struct
+ 	merge_num(flush_on_last_del);
+ 	merge_num(fast_io_fail);
+ 	merge_num(dev_loss);
++	merge_num(user_friendly_names);
+ 
+ 	return 0;
+ }
+@@ -349,6 +350,9 @@ store_hwe (vector hwtable, struct hwentr
+ 				
+ 	if (dhwe->prio_name && !(hwe->prio_name = set_param_str(dhwe->prio_name)))
+ 		goto out;
++
++	if (dhwe->prio_args && !(hwe->prio_args = set_param_str(dhwe->prio_args)))
++		goto out;
+ 				
+ 	hwe->pgpolicy = dhwe->pgpolicy;
+ 	hwe->pgfailback = dhwe->pgfailback;
+@@ -356,6 +360,11 @@ store_hwe (vector hwtable, struct hwentr
+ 	hwe->no_path_retry = dhwe->no_path_retry;
+ 	hwe->minio = dhwe->minio;
+ 	hwe->minio_rq = dhwe->minio_rq;
++	hwe->pg_timeout = dhwe->pg_timeout;
++	hwe->flush_on_last_del = dhwe->flush_on_last_del;
++	hwe->fast_io_fail = dhwe->fast_io_fail;
++	hwe->dev_loss = dhwe->dev_loss;
++	hwe->user_friendly_names = dhwe->user_friendly_names;
+ 
+ 	if (dhwe->bl_product && !(hwe->bl_product = set_param_str(dhwe->bl_product)))
+ 		goto out;
+@@ -471,7 +480,7 @@ load_config (char * file)
+ 	conf->dev_type = DEV_NONE;
+ 	conf->minio = DEFAULT_MINIO;
+ 	conf->minio_rq = DEFAULT_MINIO_RQ;
+-	conf->max_fds = 0;
++	get_sys_max_fds(&conf->max_fds);
+ 	conf->bindings_file = DEFAULT_BINDINGS_FILE;
+ 	conf->multipath_dir = set_default(DEFAULT_MULTIPATHDIR);
+ 	conf->flush_on_last_del = 0;
+Index: multipath-tools/libmultipath/config.h
+===================================================================
+--- multipath-tools.orig/libmultipath/config.h
++++ multipath-tools/libmultipath/config.h
+@@ -37,6 +37,7 @@ struct hwentry {
+ 	int flush_on_last_del;
+ 	int fast_io_fail;
+ 	unsigned int dev_loss;
++	int user_friendly_names;
+ 	char * bl_product;
+ };
+ 
+@@ -57,6 +58,7 @@ struct mpentry {
+ 	int pg_timeout;
+ 	int flush_on_last_del;
+ 	int attribute_flags;
++	int user_friendly_names;
+ 	uid_t uid;
+ 	gid_t gid;
+ 	mode_t mode;
+Index: multipath-tools/libmultipath/dict.c
+===================================================================
+--- multipath-tools.orig/libmultipath/dict.c
++++ multipath-tools/libmultipath/dict.c
+@@ -218,7 +218,7 @@ def_minio_rq_handler(vector strvec)
+ 	return 0;
+ }
+ 
+-static int
++int
+ get_sys_max_fds(int *max_fds)
+ {
+ 	FILE *file;
+@@ -549,7 +549,7 @@ def_log_checker_err_handler(vector strve
+ }
+ 
+ static int
+-names_handler(vector strvec)
++def_names_handler(vector strvec)
+ {
+ 	char * buff;
+ 
+@@ -560,10 +560,12 @@ names_handler(vector strvec)
+ 
+ 	if ((strlen(buff) == 2 && !strcmp(buff, "no")) ||
+ 	    (strlen(buff) == 1 && !strcmp(buff, "0")))
+-		conf->user_friendly_names = 0;
++		conf->user_friendly_names = USER_FRIENDLY_NAMES_OFF;
+ 	else if ((strlen(buff) == 3 && !strcmp(buff, "yes")) ||
+ 		 (strlen(buff) == 1 && !strcmp(buff, "1")))
+-		conf->user_friendly_names = 1;
++		conf->user_friendly_names = USER_FRIENDLY_NAMES_ON;
++	else
++		conf->user_friendly_names = USER_FRIENDLY_NAMES_UNDEF;
+ 
+ 	FREE(buff);
+ 	return 0;
+@@ -1141,6 +1143,32 @@ hw_flush_on_last_del_handler(vector strv
+ 	return 0;
+ }
+ 
++static int
++hw_names_handler(vector strvec)
++{
++	struct hwentry *hwe = VECTOR_LAST_SLOT(conf->hwtable);
++	char * buff;
++
++	if (!hwe)
++		return 1;
++
++	buff = set_value(strvec);
++	if (!buff)
++		return 1;
++
++	if ((strlen(buff) == 2 && strcmp(buff, "no") == 0) ||
++	    (strlen(buff) == 1 && strcmp(buff, "0") == 0))
++		hwe->user_friendly_names = USER_FRIENDLY_NAMES_OFF;
++	else if ((strlen(buff) == 3 && strcmp(buff, "yes") == 0) ||
++	    	 (strlen(buff) == 1 && strcmp(buff, "1") == 0))
++		hwe->user_friendly_names = USER_FRIENDLY_NAMES_ON;
++	else
++		hwe->user_friendly_names = USER_FRIENDLY_NAMES_UNDEF;
++
++	FREE(buff);
++	return 0;
++}
++
+ /*
+  * multipaths block handlers
+  */
+@@ -1521,6 +1549,32 @@ mp_prio_handler(vector strvec)
+ 	return 0;
+ }
+ 
++static int
++mp_names_handler(vector strvec)
++{
++	struct mpentry *mpe = VECTOR_LAST_SLOT(conf->mptable);
++	char * buff;
++
++	if (!mpe)
++		return 1;
++
++	buff = set_value(strvec);
++	if (!buff)
++		return 1;
++
++	if ((strlen(buff) == 2 && strcmp(buff, "no") == 0) ||
++	    (strlen(buff) == 1 && strcmp(buff, "0") == 0))
++		mpe->user_friendly_names = USER_FRIENDLY_NAMES_OFF;
++	else if ((strlen(buff) == 3 && strcmp(buff, "yes") == 0) ||
++	    	 (strlen(buff) == 1 && strcmp(buff, "1") == 0))
++		mpe->user_friendly_names = USER_FRIENDLY_NAMES_ON;
++	else
++		mpe->user_friendly_names = USER_FRIENDLY_NAMES_UNDEF;
++
++	FREE(buff);
++	return 0;
++}
++
+ /*
+  * config file keywords printing
+  */
+@@ -1722,6 +1776,19 @@ snprint_mp_prio (char * buff, int len, v
+ }
+ 
+ static int
++snprint_mp_user_friendly_names (char * buff, int len, void * data)
++{
++	struct mpentry * mpe = (struct mpentry *)data;
++
++	if (mpe->user_friendly_names == USER_FRIENDLY_NAMES_UNDEF)
++		return 0;
++	else if (mpe->user_friendly_names == USER_FRIENDLY_NAMES_OFF)
++		return snprintf(buff, len, "no");
++	else
++		return snprintf(buff, len, "yes");
++}
++
++static int
+ snprint_hw_fast_io_fail(char * buff, int len, void * data)
+ {
+ 	struct hwentry * hwe = (struct hwentry *)data;
+@@ -1990,6 +2057,19 @@ snprint_hw_path_checker (char * buff, in
+ }
+ 
+ static int
++snprint_hw_user_friendly_names (char * buff, int len, void * data)
++{
++	struct hwentry * hwe = (struct hwentry *)data;
++
++	if (hwe->user_friendly_names == USER_FRIENDLY_NAMES_UNDEF)
++		return 0;
++	else if (hwe->user_friendly_names == USER_FRIENDLY_NAMES_OFF)
++		return snprintf(buff, len, "no");
++	else
++		return snprintf(buff, len, "yes");
++}
++
++static int
+ snprint_def_polling_interval (char * buff, int len, void * data)
+ {
+ 	return snprintf(buff, len, "%i", conf->checkint);
+@@ -2282,10 +2362,10 @@ snprint_def_log_checker_err (char * buff
+ static int
+ snprint_def_user_friendly_names (char * buff, int len, void * data)
+ {
+-	if (!conf->user_friendly_names)
++	if (conf->user_friendly_names == USER_FRIENDLY_NAMES_ON)
++		return snprintf(buff, len, "yes");
++	else
+ 		return snprintf(buff, len, "no");
+-
+-	return snprintf(buff, len, "yes");
+ }
+ 
+ static int
+@@ -2340,7 +2420,7 @@ init_keywords(void)
+ 	install_keyword("checker_timeout", &def_checker_timeout_handler, &snprint_def_checker_timeout);
+ 	install_keyword("pg_timeout", &def_pg_timeout_handler, &snprint_def_pg_timeout);
+ 	install_keyword("flush_on_last_del", &def_flush_on_last_del_handler, &snprint_def_flush_on_last_del);
+-	install_keyword("user_friendly_names", &names_handler, &snprint_def_user_friendly_names);
++	install_keyword("user_friendly_names", &def_names_handler, &snprint_def_user_friendly_names);
+ 	install_keyword("fast_io_fail_tmo", &def_fast_io_fail_handler, &snprint_def_fast_io_fail);
+ 	install_keyword("dev_loss_tmo", &def_dev_loss_handler, &snprint_def_dev_loss);
+ 	install_keyword("find_multipaths", &def_find_multipaths_handler, &snprint_def_find_multipaths);
+@@ -2406,6 +2486,7 @@ init_keywords(void)
+ 	install_keyword("flush_on_last_del", &hw_flush_on_last_del_handler, &snprint_hw_flush_on_last_del);
+ 	install_keyword("fast_io_fail_tmo", &hw_fast_io_fail_handler, &snprint_hw_fast_io_fail);
+ 	install_keyword("dev_loss_tmo", &hw_dev_loss_handler, &snprint_hw_dev_loss);
++	install_keyword("user_friendly_names", &hw_names_handler, &snprint_hw_user_friendly_names);
+ 	install_sublevel_end();
+ 
+ 	install_keyword_root("multipaths", &multipaths_handler);
+@@ -2426,5 +2507,6 @@ init_keywords(void)
+ 	__deprecated install_keyword("uid", &mp_uid_handler, &snprint_mp_uid);
+ 	__deprecated install_keyword("gid", &mp_gid_handler, &snprint_mp_gid);
+ 	install_keyword("prio", &mp_prio_handler, &snprint_mp_prio);
++	install_keyword("user_friendly_names", &mp_names_handler, &snprint_mp_user_friendly_names);
+ 	install_sublevel_end();
+ }
+Index: multipath-tools/libmultipath/dict.h
+===================================================================
+--- multipath-tools.orig/libmultipath/dict.h
++++ multipath-tools/libmultipath/dict.h
+@@ -6,5 +6,6 @@
+ #endif
+ 
+ void init_keywords(void);
++int get_sys_max_fds(int *);
+ 
+ #endif /* _DICT_H */
+Index: multipath-tools/libmultipath/propsel.c
+===================================================================
+--- multipath-tools.orig/libmultipath/propsel.c
++++ multipath-tools/libmultipath/propsel.c
+@@ -210,6 +210,18 @@ select_selector (struct multipath * mp)
+ 	return 0;
+ }
+ 
++static int
++want_user_friendly_names(struct multipath * mp)
++{
++	if (mp->mpe &&
++	    mp->mpe->user_friendly_names != USER_FRIENDLY_NAMES_UNDEF)
++		return (mp->mpe->user_friendly_names == USER_FRIENDLY_NAMES_ON);
++	if (mp->hwe &&
++	    mp->hwe->user_friendly_names != USER_FRIENDLY_NAMES_UNDEF)
++		return (mp->hwe->user_friendly_names == USER_FRIENDLY_NAMES_ON);
++	return (conf->user_friendly_names  == USER_FRIENDLY_NAMES_ON);
++}
++
+ extern int
+ select_alias (struct multipath * mp)
+ {
+@@ -217,7 +229,7 @@ select_alias (struct multipath * mp)
+ 		mp->alias = mp->mpe->alias;
+ 	else {
+ 		mp->alias = NULL;
+-		if (conf->user_friendly_names)
++		if (want_user_friendly_names(mp))
+ 			mp->alias = get_user_friendly_alias(mp->wwid,
+ 					conf->bindings_file,
+ 					conf->bindings_read_only);
+Index: multipath-tools/libmultipath/structs.h
+===================================================================
+--- multipath-tools.orig/libmultipath/structs.h
++++ multipath-tools/libmultipath/structs.h
+@@ -94,6 +94,12 @@ enum log_checker_err_states {
+ 	LOG_CHKR_ERR_ONCE,
+ };
+ 
++enum user_friendly_names_states {
++	USER_FRIENDLY_NAMES_UNDEF,
++	USER_FRIENDLY_NAMES_OFF,
++	USER_FRIENDLY_NAMES_ON,
++};
++
+ struct scsi_idlun {
+ 	int dev_id;
+ 	int host_unique_id;

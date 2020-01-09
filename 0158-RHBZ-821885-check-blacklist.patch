@@ -1,0 +1,51 @@
+---
+ multipath/main.c |   27 +++++++++++++++++++++++++--
+ 1 file changed, 25 insertions(+), 2 deletions(-)
+
+Index: multipath-tools/multipath/main.c
+===================================================================
+--- multipath-tools.orig/multipath/main.c
++++ multipath-tools/multipath/main.c
+@@ -255,7 +255,7 @@ configure (void)
+ 	/*
+ 	 * if we have a blacklisted device parameter, exit early
+ 	 */
+-	if (dev && (filter_devnode(conf->blist_devnode, conf->elist_devnode, dev) > 0)) {
++	if (dev && conf->dev_type == DEV_DEVNODE && (filter_devnode(conf->blist_devnode, conf->elist_devnode, dev) > 0)) {
+ 		if (conf->dry_run == 2)
+ 			printf("%s is not a valid multipath device path\n", conf->dev);
+ 		goto out;
+@@ -272,9 +272,32 @@ configure (void)
+ 			goto out;
+ 		}
+ 		condlog(3, "scope limited to %s", refwwid);
++		if (conf->dev_type == DEV_DEVNODE ||
++		    conf->dev_type == DEV_DEVT) {
++			char buff[FILE_NAME_SIZE];
++			struct path *pp;
++
++			basenamecpy(conf->dev, buff);
++			pp = find_path_by_dev(pathvec, buff);
++
++			if (!pp) {
++				condlog(0, "can't find stored path");
++				goto out;
++			}
++			if (filter_device(conf->blist_device,
++					  conf->elist_device,
++					  pp->vendor_id, pp->product_id) > 0) {
++				if (conf->dry_run == 2)
++					printf("%s is not a valid mutipath device pathd\n", conf->dev);
++				goto out;
++			}
++		}
+ 		if (filter_wwid(conf->blist_wwid, conf->elist_wwid,
+-				refwwid) > 0)
++				refwwid) > 0) {
++			if (conf->dry_run == 2)
++				printf("%s is not a valid multipath device path\n", conf->dev);
+ 			goto out;
++		}
+ 		if (conf->dry_run == 2) {
+ 			if (check_wwids_file(refwwid, 0) == 0){
+ 				printf("%s is a valid multipath device path\n", conf->dev);

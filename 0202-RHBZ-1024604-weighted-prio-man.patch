@@ -1,0 +1,29 @@
+---
+ multipath/multipath.conf.5 |   14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+Index: multipath-tools/multipath/multipath.conf.5
+===================================================================
+--- multipath-tools.orig/multipath/multipath.conf.5
++++ multipath-tools/multipath/multipath.conf.5
+@@ -201,6 +201,20 @@ active/standby mode.
+ .B hds
+ Generate the path priority for Hitachi HDS Modular storage arrays.
+ .TP
++.B weighted
++.I hbtl|devname
++<regex1> <prio1> <regex2> <prio2> ...
++Generate the path priority base on the regular expressions and the
++priorities provided.
++.I hbtl
++regexes are of the SCSI H:B:T:L format. Ex: \fB1:0:0:1 , 5:.*\fR
++.I devname
++regexes are device names Ex: \fBsda , sd.e\fR
++.I Note:
++These values may change on reboot, or if the device is removed. Using
++this prioritizer may require editting multipath.conf after bootup to
++correctly set the priority.
++.TP
+ Default value is \fBconst\fR.
+ .RE
+ .TP

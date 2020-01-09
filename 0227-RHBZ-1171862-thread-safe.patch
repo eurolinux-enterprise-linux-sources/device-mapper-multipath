@@ -1,0 +1,89 @@
+---
+ libmultipath/discovery.c |    2 +-
+ libmultipath/sysfs.c     |   30 +++++++++++++-----------------
+ multipathd/main.c        |    2 ++
+ 3 files changed, 16 insertions(+), 18 deletions(-)
+
+Index: multipath-tools/libmultipath/discovery.c
+===================================================================
+--- multipath-tools.orig/libmultipath/discovery.c
++++ multipath-tools/libmultipath/discovery.c
+@@ -850,7 +850,7 @@ struct sysfs_device *sysfs_device_from_p
+ 	strlcpy(sysdev,"/block/", FILE_NAME_SIZE);
+ 	strlcat(sysdev,pp->dev, FILE_NAME_SIZE);
+ 
+-	return sysfs_device_get(sysdev, 1);
++	return sysfs_device_get(sysdev, conf->daemon);
+ }
+ 
+ int
+Index: multipath-tools/libmultipath/sysfs.c
+===================================================================
+--- multipath-tools.orig/libmultipath/sysfs.c
++++ multipath-tools/libmultipath/sysfs.c
+@@ -195,6 +195,8 @@ struct sysfs_device *sysfs_device_get(co
+ 		memset(sysdev, 0x00, sizeof(struct sysfs_device));
+ 		if (cache)
+ 			list_add(&sysdev->node, &sysfs_dev_list);
++		else
++			INIT_LIST_HEAD(&sysdev->node);
+ 		dev = sysdev;
+ 	}
+ 
+@@ -316,25 +318,19 @@ struct sysfs_device *sysfs_device_get_pa
+ 
+ void sysfs_device_put(struct sysfs_device *dev)
+ {
+-	struct sysfs_device *parent;
+-	struct sysfs_device *sysdev_loop;
++	struct sysfs_device *parent, *tmp;
+ 
+-	list_for_each_entry(sysdev_loop, &sysfs_dev_list, node) {
+-		if (sysdev_loop == dev) {
+-			parent = dev->parent;
+-			while (parent) {
+-				struct sysfs_device *tmp = parent;
+-				parent = parent->parent;
+-				free(tmp);
+-			}
+-			dbg("removed dev '%s' from cache",
+-			    sysdev_loop->devpath);
+-			list_del(&sysdev_loop->node);
+-			free(sysdev_loop);
+-			return;
+-		}
++	parent = dev->parent;
++	while (parent) {
++		tmp = parent;
++		parent = parent->parent;
++		free(tmp);
++	}
++	if (!list_empty(&dev->node)) {
++		list_del(&dev->node);
++		dbg("removed dev '%s' from cache", dev->devpath);
+ 	}
+-	dbg("dev '%s' not found in cache", dev->devpath);
++	free(dev);
+ 	return;
+ }
+ 
+Index: multipath-tools/multipathd/main.c
+===================================================================
+--- multipath-tools.orig/multipathd/main.c
++++ multipath-tools/multipathd/main.c
+@@ -316,6 +316,7 @@ uev_remove_map (struct sysfs_device * de
+ 	if (!mpp) {
+ 		condlog(2, "%s: devmap not registered, can't remove",
+ 			dev->kernel);
++		sysfs_device_put(dev);
+ 		return 0;
+ 	}
+ 	remove_map_and_stop_waiter(mpp, vecs, 1);
+@@ -584,6 +585,7 @@ ev_remove_path (char * devname, struct v
+ 	if (!pp) {
+ 		/* Not an error; path might have been purged earlier */
+ 		condlog(0, "%s: path already removed", devname);
++		*del_sysdev = 1;
+ 		return 0;
+ 	}
+ 

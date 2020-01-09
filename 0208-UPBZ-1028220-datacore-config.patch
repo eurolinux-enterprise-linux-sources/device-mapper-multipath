@@ -1,0 +1,30 @@
+---
+ libmultipath/hwtable.c |   15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+Index: multipath-tools/libmultipath/hwtable.c
+===================================================================
+--- multipath-tools.orig/libmultipath/hwtable.c
++++ multipath-tools/libmultipath/hwtable.c
+@@ -1284,6 +1284,21 @@ static struct hwentry default_hw[] = {
+ 		.checker_name  = TUR,
+ 		.prio_name     = PRIO_ALUA,
+ 	},
++	{
++		.vendor	       = "DataCore",
++		.product       = "Virtual Disk",
++		.getuid        = DEFAULT_GETUID,
++		.features      = DEFAULT_FEATURES,
++		.hwhandler     = DEFAULT_HWHANDLER,
++		.pgpolicy      = GROUP_BY_PRIO,
++		.pgfailback    = -FAILBACK_IMMEDIATE,
++		.rr_weight     = RR_WEIGHT_NONE,
++		.no_path_retry = NO_PATH_RETRY_QUEUE,
++		.minio         = DEFAULT_MINIO,
++		.minio_rq      = DEFAULT_MINIO_RQ,
++		.checker_name  = TUR,
++		.prio_name     = PRIO_ALUA,
++	},
+ 	/*
+ 	 * EOL
+ 	 */

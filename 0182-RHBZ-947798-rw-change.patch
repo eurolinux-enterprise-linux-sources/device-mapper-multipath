@@ -1,0 +1,255 @@
+---
+ libmultipath/config.c      |    1 
+ libmultipath/config.h      |    1 
+ libmultipath/dict.c        |   33 ++++++++++++++++++++++++++++++
+ libmultipath/discovery.c   |   16 ++++++++++++++
+ libmultipath/discovery.h   |    1 
+ multipath.conf.annotated   |   12 +++++++++++
+ multipath.conf.defaults    |    1 
+ multipath/multipath.conf.5 |    9 ++++++++
+ multipathd/main.c          |   49 +++++++++++++++++++++++++++++++++++++++++++++
+ 9 files changed, 123 insertions(+)
+
+Index: multipath-tools/libmultipath/config.c
+===================================================================
+--- multipath-tools.orig/libmultipath/config.c
++++ multipath-tools/libmultipath/config.c
+@@ -494,6 +494,7 @@ load_config (char * file)
+ 	conf->find_multipaths = DEFAULT_FIND_MULTIPATHS;
+ 	conf->retain_hwhandler = DEFAULT_RETAIN_HWHANDLER;
+ 	conf->detect_prio = DEFAULT_DETECT_PRIO;
++	conf->reload_readwrite = 0;
+ 
+ 	/*
+ 	 * preload default hwtable
+Index: multipath-tools/libmultipath/config.h
+===================================================================
+--- multipath-tools.orig/libmultipath/config.h
++++ multipath-tools/libmultipath/config.h
+@@ -106,6 +106,7 @@ struct config {
+ 	uint32_t cookie;
+ 	int retain_hwhandler;
+ 	int detect_prio;
++	int reload_readwrite;
+ 
+ 	char * dev;
+ 	char * sysfs_dir;
+Index: multipath-tools/libmultipath/dict.c
+===================================================================
+--- multipath-tools.orig/libmultipath/dict.c
++++ multipath-tools/libmultipath/dict.c
+@@ -665,6 +665,29 @@ def_detect_prio_handler(vector strvec)
+ 	return 0;
+ }
+ 
++static int
++def_reload_readwrite_handler(vector strvec)
++{
++	char * buff;
++
++	buff = set_value(strvec);
++
++	if (!buff)
++		return 1;
++
++	if ((strlen(buff) == 2 && !strcmp(buff, "no")) ||
++	    (strlen(buff) == 1 && !strcmp(buff, "0")))
++		conf->reload_readwrite = 0;
++	else if ((strlen(buff) == 3 && !strcmp(buff, "yes")) ||
++		 (strlen(buff) == 1 && !strcmp(buff, "1")))
++		conf->reload_readwrite = 1;
++	else
++		conf->reload_readwrite = 0;
++
++	FREE(buff);
++	return 0;
++}
++
+ /*
+  * blacklist block handlers
+  */
+@@ -2652,6 +2675,15 @@ snprint_def_detect_prio(char * buff, int
+ }
+ 
+ static int
++snprint_def_reload_readwrite(char * buff, int len, void * data)
++{
++	if (conf->reload_readwrite)
++		return snprintf(buff, len, "yes");
++	else
++		return snprintf(buff, len, "no");
++}
++
++static int
+ snprint_ble_simple (char * buff, int len, void * data)
+ {
+ 	struct blentry * ble = (struct blentry *)data;
+@@ -2711,6 +2743,7 @@ init_keywords(void)
+ 	install_keyword("reservation_key", &def_reservation_key_handler, &snprint_def_reservation_key);
+ 	install_keyword("retain_attached_hw_handler", &def_retain_hwhandler_handler, &snprint_def_retain_hwhandler);
+ 	install_keyword("detect_prio", &def_detect_prio_handler, &snprint_def_detect_prio);
++	install_keyword("reload_readwrite", &def_reload_readwrite_handler, &snprint_def_reload_readwrite);
+ 	__deprecated install_keyword("mode", &def_mode_handler, &snprint_def_mode);
+ 	__deprecated install_keyword("uid", &def_uid_handler, &snprint_def_uid);
+ 	__deprecated install_keyword("gid", &def_gid_handler, &snprint_def_gid);
+Index: multipath-tools/libmultipath/discovery.c
+===================================================================
+--- multipath-tools.orig/libmultipath/discovery.c
++++ multipath-tools/libmultipath/discovery.c
+@@ -187,6 +187,22 @@ sysfs_get_timeout(struct sysfs_device *d
+ }
+ 
+ int
++sysfs_get_ro (struct sysfs_device * dev, unsigned int * ro)
++{
++	char buff[NAME_SIZE];
++	int r;
++
++	if (sysfs_attr_get_value(dev->devpath, "ro", buff, NAME_SIZE) != 0)
++		return 1;
++
++	r = sscanf(buff, "%u\n", ro);
++
++	if (r != 1)
++		return 1;
++	return 0;
++}
++
++int
+ sysfs_get_size (struct sysfs_device * dev, unsigned long long * size)
+ {
+ 	char buff[NAME_SIZE];
+Index: multipath-tools/libmultipath/discovery.h
+===================================================================
+--- multipath-tools.orig/libmultipath/discovery.h
++++ multipath-tools/libmultipath/discovery.h
+@@ -37,6 +37,7 @@ int store_pathinfo (vector pathvec, vect
+ 		    char * devname, int flag, struct path **pp_ptr);
+ int sysfs_set_scsi_tmo (struct multipath *mpp);
+ int sysfs_get_timeout(struct sysfs_device *dev, unsigned int *timeout);
++int sysfs_get_ro (struct sysfs_device * dev, unsigned int * ro);
+ 
+ /*
+  * discovery bitmask
+Index: multipath-tools/multipath/multipath.conf.5
+===================================================================
+--- multipath-tools.orig/multipath/multipath.conf.5
++++ multipath-tools/multipath/multipath.conf.5
+@@ -402,6 +402,15 @@ will automatically use the
+ .I alua
+ prioritizer. If not, the prioritizer will be selected as usual. Default is
+ .I no
++.TP
++.B reload_readwrite
++If set to
++.I yes
++, multipathd will monitor change events on path devices.  When it receives a
++change event for a path of a readonly multipath device, it will check if
++the path is now read/write.  If so, multipathd will reload the multipath device
++to switch it to read/write. Default is
++.I no
+ .
+ .SH "blacklist section"
+ The
+Index: multipath-tools/multipathd/main.c
+===================================================================
+--- multipath-tools.orig/multipathd/main.c
++++ multipath-tools/multipathd/main.c
+@@ -360,6 +360,51 @@ uev_umount_map (struct sysfs_device * de
+ }
+ 
+ static int
++uev_check_for_rw (struct sysfs_device * dev, struct vectors * vecs)
++{
++	struct path * pp;
++	struct multipath * mpp;
++	unsigned int ro;
++
++	condlog(3, "%s: change path (uevent)", dev->kernel);
++	pp = find_path_by_dev(vecs->pathvec, dev->kernel);
++
++	if (!pp || !pp->mpp) /* not a multipath path device */
++		return 0;
++	mpp = pp->mpp;
++	if (!mpp->dmi || !mpp->dmi->read_only)
++		return 0;
++	if (sysfs_get_ro(pp->sysdev, &ro)) {
++		condlog(2, "%s: unable to get readonly status", dev->kernel);
++		return 1;
++	}
++	if (ro == 1)
++		return 0;
++	/* device has switched from readonly to read/write */
++	condlog(2, "%s: reloading map read/write", mpp->alias);
++	update_mpp_paths(mpp, vecs->pathvec);
++	setup_map(mpp);
++	mpp->action = ACT_RELOAD;
++	if (domap(mpp) <= 0) {
++		condlog(0, "%s: Failed to reload map read/write : %s",
++			mpp->alias, strerror(errno));
++		return 1;
++	}
++	dm_lib_release();
++	if (setup_multipath(vecs, mpp) != 0)
++		return 1;
++	sync_map_state(mpp);
++	if (mpp->dmi) {
++		if (mpp->dmi->read_only)
++			condlog(2, "%s: device still readonly", mpp->alias);
++		else
++			condlog(2, "%s: device switched to read/write",
++				mpp->alias);
++	}
++	return 0;
++}
++
++static int
+ uev_add_path (struct sysfs_device * dev, struct vectors * vecs)
+ {
+ 	condlog(2, "%s: add path (uevent)", dev->kernel);
+@@ -757,6 +802,10 @@ uev_trigger (struct uevent * uev, void *
+ 		r = uev_remove_path(sysdev, vecs);
+ 		goto out;
+ 	}
++	if (!strncmp(uev->action, "change", 6) && conf->reload_readwrite) {
++		r = uev_check_for_rw(sysdev, vecs);
++		goto out;
++	}
+ 
+ out:
+ 	lock_cleanup_pop(vecs->lock);
+Index: multipath-tools/multipath.conf.annotated
+===================================================================
+--- multipath-tools.orig/multipath.conf.annotated
++++ multipath-tools/multipath.conf.annotated
+@@ -232,6 +232,18 @@
+ #	# values  : yes|no
+ #	# default : no
+ #	hwtable_regex_match yes
++#
++#	#
++#	# name    : reload_readwrite
++#	# scope   : multipathd
++#	# desc    : If set to yes, multipathd will monitor change events on
++#	#           path devices.  When it receives a change event for a path
++#	#           of a readonly multipath device, it will check if the path
++#	#           is now read/write.  If so, multipathd will reload the
++#	#           multipath device to switch it to read/write.
++#	# values  : yes|no
++#	# default : no
++#	reload_readwrite yes
+ #}
+ #	
+ ##
+Index: multipath-tools/multipath.conf.defaults
+===================================================================
+--- multipath-tools.orig/multipath.conf.defaults
++++ multipath-tools/multipath.conf.defaults
+@@ -24,6 +24,7 @@
+ #	user_friendly_names no
+ #	find_multipaths no
+ #	log_checker_err always
++#	reload_readwrite no
+ #}
+ #blacklist {
+ #	devnode "^(ram|raw|loop|fd|md|dm-|sr|scd|st)[0-9]*"

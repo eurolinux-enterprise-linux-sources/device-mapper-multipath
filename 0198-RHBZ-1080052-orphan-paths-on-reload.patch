@@ -1,0 +1,96 @@
+---
+ libmultipath/structs_vec.c |   34 ++++++++++++++++++++++++++++++----
+ multipathd/main.c          |    8 ++++++++
+ 2 files changed, 38 insertions(+), 4 deletions(-)
+
+Index: multipath-tools/libmultipath/structs_vec.c
+===================================================================
+--- multipath-tools.orig/libmultipath/structs_vec.c
++++ multipath-tools/libmultipath/structs_vec.c
+@@ -277,9 +277,38 @@ update_multipath_status (struct multipat
+ 	return 0;
+ }
+ 
++void sync_paths(struct multipath *mpp, vector pathvec)
++{
++	struct path *pp;
++	struct pathgroup  *pgp;
++	int found, i, j;
++
++	vector_foreach_slot (mpp->paths, pp, i) {
++		found = 0;
++		vector_foreach_slot(mpp->pg, pgp, j) {
++			if (find_slot(pgp->paths, (void *)pp) != -1) {
++				found = 1;
++				break;
++			}
++		}
++		if (!found) {
++			condlog(3, "%s dropped path %s", mpp->alias, pp->dev);
++			vector_del_slot(mpp->paths, i--);
++			orphan_path(pp);
++		}
++	}
++	update_mpp_paths(mpp, pathvec);
++	vector_foreach_slot (mpp->paths, pp, i)
++		pp->mpp = mpp;
++}
++
+ extern int
+ update_multipath_strings (struct multipath *mpp, vector pathvec)
+ {
++	if (!mpp)
++		return 1;
++
++	update_mpp_paths(mpp, pathvec);
+ 	condlog(4, "%s: %s", mpp->alias, __FUNCTION__);
+ 
+ 	free_multipath_attributes(mpp);
+@@ -288,6 +317,7 @@ update_multipath_strings (struct multipa
+ 
+ 	if (update_multipath_table(mpp, pathvec))
+ 		return 1;
++	sync_paths(mpp, pathvec);
+ 
+ 	if (update_multipath_status(mpp))
+ 		return 1;
+@@ -504,13 +534,9 @@ int update_multipath (struct vectors *ve
+ 		return 2;
+ 	}
+ 
+-	free_pgvec(mpp->pg, KEEP_PATHS);
+-	mpp->pg = NULL;
+-
+ 	if (__setup_multipath(vecs, mpp, reset))
+ 		return 1; /* mpp freed in setup_multipath */
+ 
+-	adopt_paths(vecs->pathvec, mpp, 0);
+ 	/*
+ 	 * compare checkers states with DM states
+ 	 */
+Index: multipath-tools/multipathd/main.c
+===================================================================
+--- multipath-tools.orig/multipathd/main.c
++++ multipath-tools/multipathd/main.c
+@@ -1159,6 +1159,11 @@ check_path (struct vectors * vecs, struc
+ 
+ 		if (newstate == PATH_DOWN || newstate == PATH_SHAKY ||
+ 		    update_multipath_strings(pp->mpp, vecs->pathvec)) {
++			/* if update_multipath_strings orphaned the path, quit
++			 * early
++			 */
++			if (!pp->mpp)
++				return;
+ 			/*
+ 			 * proactively fail path in the DM
+ 			 */
+@@ -1176,6 +1181,9 @@ check_path (struct vectors * vecs, struc
+ 			pp->mpp->stat_path_failures++;
+ 			return;
+ 		}
++		/* if update_multipath_strings orphaned the path, quit early */
++		if (!pp->mpp)
++			return;
+ 
+ 		if(newstate == PATH_UP || newstate == PATH_GHOST){
+ 			if ( pp->mpp && pp->mpp->prflag ){

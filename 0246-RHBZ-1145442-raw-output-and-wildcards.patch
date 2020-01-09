@@ -1,0 +1,588 @@
+---
+ libmultipath/discovery.c  |    2 
+ libmultipath/discovery.h  |    1 
+ libmultipath/print.c      |  151 +++++++++++++++++++++++++++++++++++++++++-----
+ libmultipath/print.h      |    4 -
+ multipathd/cli.c          |    7 +-
+ multipathd/cli.h          |    8 +-
+ multipathd/cli_handlers.c |   48 ++++++++++----
+ multipathd/cli_handlers.h |    2 
+ multipathd/main.c         |    2 
+ multipathd/multipathd.8   |   10 +++
+ 10 files changed, 199 insertions(+), 36 deletions(-)
+
+Index: multipath-tools/libmultipath/print.c
+===================================================================
+--- multipath-tools.orig/libmultipath/print.c
++++ multipath-tools/libmultipath/print.c
+@@ -25,19 +25,29 @@
+ #include "blacklist.h"
+ #include "switchgroup.h"
+ #include "devmapper.h"
++#include "discovery.h"
++#include "sysfs.h"
++#include "util.h"
+ #include "debug.h"
+ 
+ #define MAX(x,y) (x > y) ? x : y
+ #define TAIL     (line + len - 1 - c)
+ #define NOPAD    s = c
+-#define PAD(x)   while ((int)(c - s) < (x) && (c < (line + len - 1))) \
+-			*c++ = ' '; s = c
++#define PAD(x) \
++do { \
++	while ((int)(c - s) < (x) && (c < (line + len - 1))) \
++		*c++ = ' '; \
++	s = c; \
++} while (0)
++
+ #define ENDLINE \
+ 		if (c > line) \
+ 			line[c - line - 1] = '\n'
+-#define PRINT(var, size, format, args...)      \
+-		fwd = snprintf(var, size, format, ##args); \
+-		 c += (fwd >= size) ? size : fwd;
++#define PRINT(var, size, format, args...) \
++do { \
++	fwd = snprintf(var, size, format, ##args); \
++	c += (fwd >= size) ? size : fwd; \
++} while (0)
+ 
+ /*
+  * information printing helpers
+@@ -420,6 +430,105 @@ snprint_path_size (char * buff, size_t l
+ }
+ 
+ static int
++snprint_path_serial (char * buff, size_t len, struct path * pp)
++{
++	return snprint_str(buff, len, pp->serial);
++}
++
++static int
++snprint_path_mpp (char * buff, size_t len, struct path * pp)
++{
++	if (!pp->mpp)
++		return snprintf(buff, len, "[orphan]");
++	if (!pp->mpp->alias)
++		return snprintf(buff, len, "[unknown]");
++	return snprint_str(buff, len, pp->mpp->alias);
++}
++
++static int
++snprint_host_wwn (char * buff, size_t len, struct path * pp, char *attr)
++{
++	char attr_path[SYSFS_PATH_SIZE];
++	char wwn[131]; /* "0x" + 64 bit hex value + null byte */
++
++	if (pp->sg_id.proto_id != SCSI_PROTOCOL_FCP)
++		return snprintf(buff, len, "[undef]");
++	if (safe_sprintf(attr_path, "/class/fc_host/host%d",
++			 pp->sg_id.host_no)) {
++		condlog(0, "attr_path to small for host link");
++		goto fail;
++	}
++	if (sysfs_attr_get_value(attr_path, attr, wwn, 131) != 0) {
++		condlog(0, "failed to get \"%s/%s\"", attr_path, attr);
++		goto fail;
++	}
++	return snprint_str(buff, len, wwn);
++fail:
++	return snprintf(buff, len, "[unknown]");
++}
++
++static int
++snprint_host_wwnn (char * buff, size_t len, struct path * pp)
++{
++	return snprint_host_wwn(buff, len, pp, "node_name");
++}
++
++static int
++snprint_host_wwpn (char * buff, size_t len, struct path * pp)
++{
++	return snprint_host_wwn(buff, len, pp, "port_name");
++}
++
++static int
++snprint_tgt_wwpn (char * buff, size_t len, struct path * pp)
++{
++	char attr_path[SYSFS_PATH_SIZE];
++	int rport_id;
++	char wwn[131]; /* "0x" + 64 bit hex value + null byte */
++
++	if (pp->sg_id.proto_id != SCSI_PROTOCOL_FCP)
++		return snprintf(buff, len, "[undef]");
++	rport_id = find_rport_id(pp);
++	if (rport_id < 0) {
++		condlog(3, "failed to find rport_id for target%d:%d:%d",
++			pp->sg_id.host_no, pp->sg_id.channel,
++			pp->sg_id.scsi_id);
++		goto fail;
++	}
++	if (safe_snprintf(attr_path, SYSFS_PATH_SIZE,
++			  "/class/fc_remote_ports/rport-%d:%d-%d",
++			  pp->sg_id.host_no, pp->sg_id.channel,
++			  rport_id)) {
++		condlog(0, "attr_path '/class/fc_remote_ports/rport-%d:%d-%d' too large", pp->sg_id.host_no, pp->sg_id.channel, rport_id);
++		goto fail;
++	}
++	if (sysfs_attr_get_value(attr_path, "port_name", wwn, 131) != 0)
++		goto fail;
++	return snprint_str(buff, len, wwn);
++fail:
++	return snprintf(buff, len, "[unknown]");
++}
++
++
++static int
++snprint_tgt_wwnn (char * buff, size_t len, struct path * pp)
++{
++	if (pp->tgt_node_name[0] == '\0')
++		return snprintf(buff, len, "[undef]");
++	return snprint_str(buff, len, pp->tgt_node_name);
++}
++
++static int
++snprint_host_adapter (char * buff, size_t len, struct path * pp)
++{
++	char adapter[SLOT_NAME_SIZE];
++
++	if (sysfs_get_host_adapter_name(pp, adapter))
++		return snprintf(buff, len, "[undef]");
++	return snprint_str(buff, len, adapter);
++}
++
++static int
+ snprint_path_checker (char * buff, size_t len, struct path * pp)
+ {
+ 	struct checker * c = &pp->checker;
+@@ -461,6 +570,13 @@ struct path_data pd[] = {
+ 	{'C', "next_check",    0, snprint_next_check},
+ 	{'p', "pri",           0, snprint_pri},
+ 	{'S', "size",          0, snprint_path_size},
++	{'z', "serial",        0, snprint_path_serial},
++	{'m', "multipath",     0, snprint_path_mpp},
++	{'N', "host WWNN",     0, snprint_host_wwnn},
++	{'n', "target WWNN",   0, snprint_tgt_wwnn},
++	{'R', "host WWPN",     0, snprint_host_wwpn},
++	{'r', "target WWPN",   0, snprint_tgt_wwpn},
++	{'a', "host adapter",  0, snprint_host_adapter},
+ 	{0, NULL, 0 , NULL}
+ };
+ 
+@@ -611,7 +727,7 @@ snprint_multipath_header (char * line, i
+ 
+ int
+ snprint_multipath (char * line, int len, char * format,
+-	     struct multipath * mpp)
++	     struct multipath * mpp, int pad)
+ {
+ 	char * c = line;   /* line cursor */
+ 	char * s = line;   /* for padding */
+@@ -638,7 +754,8 @@ snprint_multipath (char * line, int len,
+ 
+ 		data->snprint(buff, MAX_FIELD_LEN, mpp);
+ 		PRINT(c, TAIL, "%s", buff);
+-		PAD(data->width);
++		if (pad)
++			PAD(data->width);
+ 		buff[0] = '\0';
+ 	} while (*f++);
+ 
+@@ -681,7 +798,7 @@ snprint_path_header (char * line, int le
+ 
+ int
+ snprint_path (char * line, int len, char * format,
+-	     struct path * pp)
++	     struct path * pp, int pad)
+ {
+ 	char * c = line;   /* line cursor */
+ 	char * s = line;   /* for padding */
+@@ -708,7 +825,8 @@ snprint_path (char * line, int len, char
+ 
+ 		data->snprint(buff, MAX_FIELD_LEN, pp);
+ 		PRINT(c, TAIL, "%s", buff);
+-		PAD(data->width);
++		if (pad)
++			PAD(data->width);
+ 	} while (*f++);
+ 
+ 	ENDLINE;
+@@ -800,7 +918,7 @@ snprint_multipath_topology (char * buff,
+ 	reset_multipath_layout();
+ 
+ 	if (verbosity == 1)
+-		return snprint_multipath(buff, len, "%n", mpp);
++		return snprint_multipath(buff, len, "%n", mpp, 1);
+ 
+ 	if(isatty(1))
+ 		c += sprintf(c, "%c[%dm", 0x1B, 1); /* bold on */
+@@ -819,10 +937,11 @@ snprint_multipath_topology (char * buff,
+ 	if(isatty(1))
+ 		c += sprintf(c, "%c[%dm", 0x1B, 0); /* bold off */
+ 
+-	fwd += snprint_multipath(buff + fwd, len - fwd, style, mpp);
++	fwd += snprint_multipath(buff + fwd, len - fwd, style, mpp, 1);
+ 	if (fwd > len)
+ 		return len;
+-	fwd += snprint_multipath(buff + fwd, len - fwd, PRINT_MAP_PROPS, mpp);
++	fwd += snprint_multipath(buff + fwd, len - fwd, PRINT_MAP_PROPS, mpp,
++				 1);
+ 	if (fwd > len)
+ 		return len;
+ 
+@@ -849,7 +968,7 @@ snprint_multipath_topology (char * buff,
+ 				strcpy(f, " |- " PRINT_PATH_INDENT);
+ 			else
+ 				strcpy(f, " `- " PRINT_PATH_INDENT);
+-			fwd += snprint_path(buff + fwd, len - fwd, fmt, pp);
++			fwd += snprint_path(buff + fwd, len - fwd, fmt, pp, 1);
+ 			if (fwd > len)
+ 				return len;
+ 		}
+@@ -1308,7 +1427,7 @@ snprint_devices (char * buff, int len, s
+ 			if (r > 0)
+ 				fwd += snprintf(buff + fwd, len - fwd,
+ 						" devnode blacklisted, unmonitored");
+-			else if (r < 0)
++			else if (r <= 0)
+ 				fwd += snprintf(buff + fwd, len - fwd,
+ 						" devnode whitelisted, unmonitored");
+ 		} else
+@@ -1338,7 +1457,7 @@ print_path (struct path * pp, char * sty
+ 	char line[MAX_LINE_LEN];
+ 
+ 	memset(&line[0], 0, MAX_LINE_LEN);
+-	snprint_path(&line[0], MAX_LINE_LEN, style, pp);
++	snprint_path(&line[0], MAX_LINE_LEN, style, pp, 1);
+ 	printf("%s", line);
+ }
+ 
+@@ -1348,7 +1467,7 @@ print_multipath (struct multipath * mpp,
+ 	char line[MAX_LINE_LEN];
+ 
+ 	memset(&line[0], 0, MAX_LINE_LEN);
+-	snprint_multipath(&line[0], MAX_LINE_LEN, style, mpp);
++	snprint_multipath(&line[0], MAX_LINE_LEN, style, mpp, 1);
+ 	printf("%s", line);
+ }
+ 
+Index: multipath-tools/libmultipath/print.h
+===================================================================
+--- multipath-tools.orig/libmultipath/print.h
++++ multipath-tools/libmultipath/print.h
+@@ -37,8 +37,8 @@ void get_path_layout (vector pathvec, in
+ void get_multipath_layout (vector mpvec, int header);
+ int snprint_path_header (char *, int, char *);
+ int snprint_multipath_header (char *, int, char *);
+-int snprint_path (char *, int, char *, struct path *);
+-int snprint_multipath (char *, int, char *, struct multipath *);
++int snprint_path (char *, int, char *, struct path *, int);
++int snprint_multipath (char *, int, char *, struct multipath *, int);
+ int snprint_multipath_topology (char *, int, struct multipath * mpp,
+ 				int verbosity);
+ int snprint_defaults (char *, int);
+Index: multipath-tools/multipathd/cli.c
+===================================================================
+--- multipath-tools.orig/multipathd/cli.c
++++ multipath-tools/multipathd/cli.c
+@@ -174,7 +174,7 @@ load_keys (void)
+ 	r += add_key(keys, "config", CONFIG, 0);
+ 	r += add_key(keys, "blacklist", BLACKLIST, 0);
+ 	r += add_key(keys, "devices", DEVICES, 0);
+-	r += add_key(keys, "format", FMT, 1);
++	r += add_key(keys, "raw", RAW, 0);
+ 	r += add_key(keys, "wildcards", WILDCARDS, 0);
+ 	r += add_key(keys, "count", COUNT, 0);
+ 	r += add_key(keys, "quit", QUIT, 0);
+@@ -182,6 +182,7 @@ load_keys (void)
+ 	r += add_key(keys, "getprstatus", GETPRSTATUS, 0);
+ 	r += add_key(keys, "setprstatus", SETPRSTATUS, 0);
+ 	r += add_key(keys, "unsetprstatus", UNSETPRSTATUS, 0);
++	r += add_key(keys, "format", FMT, 1);
+ 
+ 	if (r) {
+ 		free_keys(keys);
+@@ -298,7 +299,7 @@ out:
+ 	return r;
+ }
+ 
+-static unsigned int
++static unsigned long
+ fingerprint(vector vec)
+ {
+ 	int i;
+@@ -433,12 +434,14 @@ cli_init (void) {
+ 
+ 	add_handler(LIST+PATHS, NULL);
+ 	add_handler(LIST+PATHS+FMT, NULL);
++	add_handler(LIST+PATHS+RAW+FMT, NULL);
+ 	add_handler(LIST+STATUS, NULL);
+ 	add_handler(LIST+DAEMON, NULL);
+ 	add_handler(LIST+MAPS, NULL);
+ 	add_handler(LIST+MAPS+STATUS, NULL);
+ 	add_handler(LIST+MAPS+STATS, NULL);
+ 	add_handler(LIST+MAPS+FMT, NULL);
++	add_handler(LIST+MAPS+RAW+FMT, NULL);
+ 	add_handler(LIST+MAPS+TOPOLOGY, NULL);
+ 	add_handler(LIST+TOPOLOGY, NULL);
+ 	add_handler(LIST+MAP+TOPOLOGY, NULL);
+Index: multipath-tools/multipathd/cli.h
+===================================================================
+--- multipath-tools.orig/multipathd/cli.h
++++ multipath-tools/multipathd/cli.h
+@@ -24,13 +24,14 @@ enum {
+ 	__CONFIG,
+ 	__BLACKLIST,
+ 	__DEVICES,
+-	__FMT,
++	__RAW,
+ 	__COUNT,
+ 	__WILDCARDS,
+ 	__QUIT,
+ 	__GETPRSTATUS,
+ 	__SETPRSTATUS,
+ 	__UNSETPRSTATUS,
++	__FMT,
+ };
+ 
+ #define LIST		(1 << __LIST)
+@@ -58,15 +59,16 @@ enum {
+ #define CONFIG		(1 << __CONFIG)
+ #define BLACKLIST	(1 << __BLACKLIST)
+ #define DEVICES  	(1 << __DEVICES)
+-#define FMT 	 	(1 << __FMT)
++#define RAW 	 	(1 << __RAW)
+ #define COUNT		(1 << __COUNT)
+ #define WILDCARDS	(1 << __WILDCARDS)
+ #define QUIT		(1 << __QUIT)
+ #define GETPRSTATUS	(1UL << __GETPRSTATUS)
+ #define SETPRSTATUS	(1UL << __SETPRSTATUS)
+ #define UNSETPRSTATUS	(1UL << __UNSETPRSTATUS)
++#define FMT		(1UL << __FMT)
+ 
+-#define INITIAL_REPLY_LEN 1100
++#define INITIAL_REPLY_LEN 1200
+ 
+ struct key {
+ 	char * str;
+Index: multipath-tools/multipathd/cli_handlers.c
+===================================================================
+--- multipath-tools.orig/multipathd/cli_handlers.c
++++ multipath-tools/multipathd/cli_handlers.c
+@@ -43,7 +43,8 @@ count_paths(char  **r, int *l, struct ve
+ }
+ 
+ int
+-show_paths (char ** r, int * len, struct vectors * vecs, char * style)
++show_paths (char ** r, int * len, struct vectors * vecs, char * style,
++	    int pretty)
+ {
+ 	int i;
+ 	struct path * pp;
+@@ -61,13 +62,13 @@ show_paths (char ** r, int * len, struct
+ 
+ 		c = reply;
+ 
+-		if (VECTOR_SIZE(vecs->pathvec) > 0)
++		if (pretty && VECTOR_SIZE(vecs->pathvec) > 0)
+ 			c += snprint_path_header(c, reply + maxlen - c,
+ 						 style);
+ 
+ 		vector_foreach_slot(vecs->pathvec, pp, i)
+ 			c += snprint_path(c, reply + maxlen - c,
+-					  style, pp);
++					  style, pp, pretty);
+ 
+ 		again = ((c - reply) == (maxlen - 1));
+ 
+@@ -232,7 +233,7 @@ cli_list_paths (void * v, char ** reply,
+ 
+ 	condlog(3, "list paths (operator)");
+ 
+-	return show_paths(reply, len, vecs, PRINT_PATH_CHECKER);
++	return show_paths(reply, len, vecs, PRINT_PATH_CHECKER, 1);
+ }
+ 
+ int
+@@ -243,7 +244,18 @@ cli_list_paths_fmt (void * v, char ** re
+ 
+ 	condlog(3, "list paths (operator)");
+ 
+-	return show_paths(reply, len, vecs, fmt);
++	return show_paths(reply, len, vecs, fmt, 1);
++}
++
++int
++cli_list_paths_raw (void * v, char ** reply, int * len, void * data)
++{
++	struct vectors * vecs = (struct vectors *)data;
++	char * fmt = get_keyparam(v, FMT);
++
++	condlog(3, "list paths (operator)");
++
++	return show_paths(reply, len, vecs, fmt, 0);
+ }
+ 
+ int
+@@ -332,7 +344,8 @@ show_daemon (char ** r, int *len)
+ }
+ 
+ int
+-show_maps (char ** r, int *len, struct vectors * vecs, char * style)
++show_maps (char ** r, int *len, struct vectors * vecs, char * style,
++	   int pretty)
+ {
+ 	int i;
+ 	struct multipath * mpp;
+@@ -349,13 +362,13 @@ show_maps (char ** r, int *len, struct v
+ 			return 1;
+ 
+ 		c = reply;
+-		if (VECTOR_SIZE(vecs->mpvec) > 0)
++		if (pretty && VECTOR_SIZE(vecs->mpvec) > 0)
+ 			c += snprint_multipath_header(c, reply + maxlen - c,
+ 						      style);
+ 
+ 		vector_foreach_slot(vecs->mpvec, mpp, i)
+ 			c += snprint_multipath(c, reply + maxlen - c,
+-					       style, mpp);
++					       style, mpp, pretty);
+ 
+ 		again = ((c - reply) == (maxlen - 1));
+ 
+@@ -375,7 +388,18 @@ cli_list_maps_fmt (void * v, char ** rep
+ 
+ 	condlog(3, "list maps (operator)");
+ 
+-	return show_maps(reply, len, vecs, fmt);
++	return show_maps(reply, len, vecs, fmt, 1);
++}
++
++int
++cli_list_maps_raw (void * v, char ** reply, int * len, void * data)
++{
++	struct vectors * vecs = (struct vectors *)data;
++	char * fmt = get_keyparam(v, FMT);
++
++	condlog(3, "list maps (operator)");
++
++	return show_maps(reply, len, vecs, fmt, 0);
+ }
+ 
+ int
+@@ -385,7 +409,7 @@ cli_list_maps (void * v, char ** reply, 
+ 
+ 	condlog(3, "list maps (operator)");
+ 
+-	return show_maps(reply, len, vecs, PRINT_MAP_NAMES);
++	return show_maps(reply, len, vecs, PRINT_MAP_NAMES, 1);
+ }
+ 
+ int
+@@ -405,7 +429,7 @@ cli_list_maps_status (void * v, char ** 
+ 
+ 	condlog(3, "list maps status (operator)");
+ 
+-	return show_maps(reply, len, vecs, PRINT_MAP_STATUS);
++	return show_maps(reply, len, vecs, PRINT_MAP_STATUS, 1);
+ }
+ 
+ int
+@@ -415,7 +439,7 @@ cli_list_maps_stats (void * v, char ** r
+ 
+ 	condlog(3, "list maps stats (operator)");
+ 
+-	return show_maps(reply, len, vecs, PRINT_MAP_STATS);
++	return show_maps(reply, len, vecs, PRINT_MAP_STATS, 1);
+ }
+ 
+ int
+Index: multipath-tools/multipathd/cli_handlers.h
+===================================================================
+--- multipath-tools.orig/multipathd/cli_handlers.h
++++ multipath-tools/multipathd/cli_handlers.h
+@@ -1,9 +1,11 @@
+ int cli_list_paths (void * v, char ** reply, int * len, void * data);
+ int cli_list_paths_fmt (void * v, char ** reply, int * len, void * data);
++int cli_list_paths_raw (void * v, char ** reply, int * len, void * data);
+ int cli_list_status (void * v, char ** reply, int * len, void * data);
+ int cli_list_daemon (void * v, char ** reply, int * len, void * data);
+ int cli_list_maps (void * v, char ** reply, int * len, void * data);
+ int cli_list_maps_fmt (void * v, char ** reply, int * len, void * data);
++int cli_list_maps_raw (void * v, char ** reply, int * len, void * data);
+ int cli_list_maps_status (void * v, char ** reply, int * len, void * data);
+ int cli_list_maps_stats (void * v, char ** reply, int * len, void * data);
+ int cli_list_map_topology (void * v, char ** reply, int * len, void * data);
+Index: multipath-tools/multipathd/main.c
+===================================================================
+--- multipath-tools.orig/multipathd/main.c
++++ multipath-tools/multipathd/main.c
+@@ -866,12 +866,14 @@ uxlsnrloop (void * ap)
+ 
+ 	set_handler_callback(LIST+PATHS, cli_list_paths);
+ 	set_handler_callback(LIST+PATHS+FMT, cli_list_paths_fmt);
++	set_handler_callback(LIST+PATHS+RAW+FMT, cli_list_paths_raw);
+ 	set_handler_callback(LIST+MAPS, cli_list_maps);
+ 	set_handler_callback(LIST+STATUS, cli_list_status);
+ 	set_handler_callback(LIST+DAEMON, cli_list_daemon);
+ 	set_handler_callback(LIST+MAPS+STATUS, cli_list_maps_status);
+ 	set_handler_callback(LIST+MAPS+STATS, cli_list_maps_stats);
+ 	set_handler_callback(LIST+MAPS+FMT, cli_list_maps_fmt);
++	set_handler_callback(LIST+MAPS+RAW+FMT, cli_list_maps_raw);
+ 	set_handler_callback(LIST+MAPS+TOPOLOGY, cli_list_maps_topology);
+ 	set_handler_callback(LIST+TOPOLOGY, cli_list_maps_topology);
+ 	set_handler_callback(LIST+MAP+TOPOLOGY, cli_list_map_topology);
+Index: multipath-tools/libmultipath/discovery.c
+===================================================================
+--- multipath-tools.orig/libmultipath/discovery.c
++++ multipath-tools/libmultipath/discovery.c
+@@ -350,7 +350,7 @@ int sysfs_get_iscsi_ip_address(struct pa
+ 	return 1;
+ }
+ 
+-static int
++int
+ find_rport_id(struct path *pp)
+ {
+ 	char attr_path[SYSFS_PATH_SIZE];
+Index: multipath-tools/libmultipath/discovery.h
+===================================================================
+--- multipath-tools.orig/libmultipath/discovery.h
++++ multipath-tools/libmultipath/discovery.h
+@@ -33,6 +33,7 @@ int path_offline (struct path *);
+ int get_state (struct path * pp, int daemon);
+ int path_blocked (struct path *);
+ int pathinfo (struct path *, vector hwtable, int mask);
++int find_rport_id(struct path *pp);
+ int store_pathinfo (vector pathvec, vector hwtable,
+ 		    char * devname, int flag, struct path **pp_ptr);
+ int sysfs_set_scsi_tmo (struct multipath *mpp);
+Index: multipath-tools/multipathd/multipathd.8
+===================================================================
+--- multipath-tools.orig/multipathd/multipathd.8
++++ multipath-tools/multipathd/multipathd.8
+@@ -39,6 +39,11 @@ Show the paths that multipathd is monito
+ Show the paths that multipathd is monitoring, using a format string with path
+ format wildcards.
+ .TP
++.B list|show paths raw format $format
++Show the paths that multipathd is monitoring, using a format string with path
++format wildcards. No headers will be printed and no padding will be applied to
++the strings.
++.TP
+ .B list|show status
+ Show the number of monitored paths in each path checker state.
+ .TP
+@@ -52,6 +57,11 @@ Show the current state of the multipathd
+ Show the status of all multipath devices that the multipathd is monitoring,
+ using a format string with multipath format wildcards.
+ .TP
++.B list|show maps|multipaths raw format $format
++Show the status of all multipath devices that the multipathd is monitoring,
++using a format string with multipath format wildcards. No headers will be
++printed and no padding will be applied to the strings.
++.TP
+ .B list|show maps|multipaths status
+ Show the status of all multipath devices that the multipathd is monitoring.
+ .TP

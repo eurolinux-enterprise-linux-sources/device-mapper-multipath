@@ -1,0 +1,17 @@
+---
+ libmultipath/prioritizers/alua.c |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+Index: multipath-tools/libmultipath/prioritizers/alua.c
+===================================================================
+--- multipath-tools.orig/libmultipath/prioritizers/alua.c
++++ multipath-tools/libmultipath/prioritizers/alua.c
+@@ -107,7 +107,7 @@ int getprio (struct path * pp)
+ 			default:
+ 				rc = 0;
+ 		}
+-		if (priopath)
++		if (priopath && aas != AAS_OPTIMIZED)
+ 			rc += 80;
+ 	} else {
+ 		switch(-rc) {

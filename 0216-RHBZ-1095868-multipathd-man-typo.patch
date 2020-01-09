@@ -1,0 +1,17 @@
+---
+ multipathd/multipathd.8 |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+Index: multipath-tools/multipathd/multipathd.8
+===================================================================
+--- multipath-tools.orig/multipathd/multipathd.8
++++ multipath-tools/multipathd/multipathd.8
+@@ -88,7 +88,7 @@ Stop monitoring a path. $path is as list
+ .TP
+ .B paths count
+ Show the number of monitored paths, and whether multipathd is currently
+-handeling a uevent.
++handling a uevent.
+ .TP
+ .B add map|multipath $map
+ Add a multipath device to the list of monitored devices. $map can either be a device-mapper device as listed in /sys/block (e.g. dm-0) or it can be the alias for the multipath device (e.g. mpath1) or the uid of the multipath device (e.g. 36005076303ffc56200000000000010aa). 

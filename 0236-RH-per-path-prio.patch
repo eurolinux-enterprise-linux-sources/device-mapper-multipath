@@ -1,0 +1,445 @@
+---
+ libmultipath/discovery.c             |   14 ++++---
+ libmultipath/prio.c                  |   65 +++++++++++++++++++++++++++++++----
+ libmultipath/prio.h                  |    9 ++++
+ libmultipath/prioritizers/alua.c     |    2 -
+ libmultipath/prioritizers/const.c    |    2 -
+ libmultipath/prioritizers/emc.c      |    1 
+ libmultipath/prioritizers/hds.c      |    1 
+ libmultipath/prioritizers/hp_sw.c    |    1 
+ libmultipath/prioritizers/ontap.c    |    1 
+ libmultipath/prioritizers/random.c   |    1 
+ libmultipath/prioritizers/rdac.c     |    1 
+ libmultipath/prioritizers/weighted.c |    1 
+ libmultipath/propsel.c               |   26 +++++++-------
+ libmultipath/structs.c               |    2 +
+ libmultipath/structs.h               |    4 +-
+ libmultipath/structs_vec.c           |    2 -
+ 16 files changed, 104 insertions(+), 29 deletions(-)
+
+Index: multipath-tools/libmultipath/discovery.c
+===================================================================
+--- multipath-tools.orig/libmultipath/discovery.c
++++ multipath-tools/libmultipath/discovery.c
+@@ -1071,6 +1071,8 @@ get_uid (struct path * pp)
+ static int
+ get_prio (struct path * pp)
+ {
++	struct prio *p;
++
+ 	if (!pp)
+ 		return 0;
+ 
+@@ -1079,24 +1081,26 @@ get_prio (struct path * pp)
+ 		return 0;
+ 	}
+ 
+-	if (!pp->prio) {
++	p = &pp->prio;
++
++	if (!prio_selected(p)) {
+ 		if (!strlen(pp->wwid))
+ 			get_uid(pp);
+ 		select_detect_prio(pp);
+ 		select_prio(pp);
+-		if (!pp->prio) {
++		if (!prio_selected(p)) {
+ 			condlog(3, "%s: no prio selected", pp->dev);
+ 			return 1;
+ 		}
+ 	}
+-	pp->priority = prio_getprio(pp->prio, pp);
++	pp->priority = prio_getprio(p, pp);
+ 	if (pp->priority < 0) {
+-		condlog(3, "%s: %s prio error", pp->dev, prio_name(pp->prio));
++		condlog(3, "%s: %s prio error", pp->dev, prio_name(p));
+ 		pp->priority = PRIO_UNDEF;
+ 		return 1;
+ 	}
+ 	condlog(3, "%s: %s prio = %u",
+-		pp->dev, prio_name(pp->prio), pp->priority);
++		pp->dev, prio_name(p), pp->priority);
+ 	return 0;
+ }
+ 
+Index: multipath-tools/libmultipath/prio.c
+===================================================================
+--- multipath-tools.orig/libmultipath/prio.c
++++ multipath-tools/libmultipath/prio.c
+@@ -25,21 +25,47 @@ int init_prio (void)
+ 
+ static struct prio * alloc_prio (void)
+ {
+-	return MALLOC(sizeof(struct prio));
++	struct prio *p;
++
++	p = MALLOC(sizeof(struct prio));
++	if (p) {
++		INIT_LIST_HEAD(&p->node);
++		p->refcount = 1;
++	}
++	return p;
+ }
+ 
+ void free_prio (struct prio * p)
+ {
++	if (!p)
++		return;
++	p->refcount--;
++	if (p->refcount) {
++		condlog(3, "%s prioritizer refcount %d", p->name, p->refcount);
++		return;
++	}
++	condlog(3, "unloading %s prioritizer", p->name);
++	list_del(&p->node);
++	if (p->handle) {
++		if (dlclose(p->handle) != 0) {
++			condlog(0, "Cannot unload prioritizer %s: %s",
++				p->name, dlerror());
++		}
++	}
+ 	FREE(p);
+ }
+ 
++int prio_selected (struct prio * p)
++{
++	return (p && p->getprio);
++}
++
+ void cleanup_prio(void)
+ {
+ 	struct prio * prio_loop;
+ 	struct prio * prio_temp;
+ 
+ 	list_for_each_entry_safe(prio_loop, prio_temp, &prioritizers, node) {
+-		list_del(&prio_loop->node);
+ 		free_prio(prio_loop);
+ 	}
+ }
+@@ -58,7 +84,6 @@ struct prio * prio_lookup (char * name)
+ struct prio * add_prio (char * name)
+ {
+ 	char libname[LIB_PRIO_NAMELEN];
+-	void * handle;
+ 	struct prio * p;
+ 	char *errstr;
+ 
+@@ -68,13 +93,13 @@ struct prio * add_prio (char * name)
+ 	snprintf(libname, LIB_PRIO_NAMELEN, "%s/libprio%s.so",
+ 		 conf->multipath_dir, name);
+ 	condlog(3, "loading %s prioritizer", libname);
+-	handle = dlopen(libname, RTLD_NOW);
++	p->handle = dlopen(libname, RTLD_NOW);
+ 	errstr = dlerror();
+ 	if (errstr != NULL)
+ 	condlog(0, "A dynamic linking error occurred: (%s)", errstr);
+-	if (!handle)
++	if (!p->handle)
+ 		goto out;
+-	p->getprio = (int (*)(struct path *)) dlsym(handle, "getprio");
++	p->getprio = (int (*)(struct path *)) dlsym(p->handle, "getprio");
+ 	errstr = dlerror();
+ 	if (errstr != NULL)
+ 	condlog(0, "A dynamic linking error occurred: (%s)", errstr);
+@@ -97,3 +122,31 @@ char * prio_name (struct prio * p)
+ {
+ 	return p->name;
+ }
++
++void prio_get (struct prio * dst, char * name)
++{
++	struct prio * src = prio_lookup(name);
++
++	if (!src) {
++		dst->getprio = NULL;
++		return;
++	}
++
++	strncpy(dst->name, src->name, PRIO_NAME_LEN);
++	dst->getprio = src->getprio;
++	dst->handle = NULL;
++
++	src->refcount++;
++}
++
++void prio_put (struct prio * dst)
++{
++	struct prio * src;
++
++	if (!dst)
++		return;
++
++	src = prio_lookup(dst->name);
++	memset(dst, 0x0, sizeof(struct prio));
++	free_prio(src);
++}
+Index: multipath-tools/libmultipath/prio.h
+===================================================================
+--- multipath-tools.orig/libmultipath/prio.h
++++ multipath-tools/libmultipath/prio.h
+@@ -6,10 +6,12 @@
+  */
+ #include "checkers.h"
+ #include "vector.h"
+-#include "structs.h"
+ #include "list.h"
+ #include "memory.h"
+ 
++/* forward declaration to avoid circular dependency */
++struct path;
++
+ #define DEFAULT_PRIO "const"
+ 
+ /*
+@@ -37,6 +39,8 @@
+ #define PRIO_NAME_LEN 16
+ 
+ struct prio {
++	void *handle;
++	int refcount;
+ 	struct list_head node;
+ 	char name[PRIO_NAME_LEN];
+ 	int (*getprio)(struct path *);
+@@ -48,6 +52,9 @@ void cleanup_prio (void);
+ struct prio * add_prio (char *);
+ struct prio * prio_lookup (char *);
+ int prio_getprio (struct prio *, struct path *);
++void prio_get (struct prio *, char *);
++void prio_put (struct prio *);
++int prio_selected (struct prio *);
+ char * prio_name (struct prio *);
+ 
+ #endif /* _PRIO_H */
+Index: multipath-tools/libmultipath/prioritizers/alua.c
+===================================================================
+--- multipath-tools.orig/libmultipath/prioritizers/alua.c
++++ multipath-tools/libmultipath/prioritizers/alua.c
+@@ -16,7 +16,7 @@
+ 
+ #include <debug.h>
+ #include <prio.h>
+-
++#include <structs.h>
+ #include "alua.h"
+ 
+ #define ALUA_PRIO_NOT_SUPPORTED			1
+Index: multipath-tools/libmultipath/prioritizers/const.c
+===================================================================
+--- multipath-tools.orig/libmultipath/prioritizers/const.c
++++ multipath-tools/libmultipath/prioritizers/const.c
+@@ -1,5 +1,5 @@
+ #include <stdio.h>
+-
++#include <structs.h>
+ #include <prio.h>
+ 
+ int getprio (struct path * pp)
+Index: multipath-tools/libmultipath/prioritizers/emc.c
+===================================================================
+--- multipath-tools.orig/libmultipath/prioritizers/emc.c
++++ multipath-tools/libmultipath/prioritizers/emc.c
+@@ -4,6 +4,7 @@
+ 
+ #include <sg_include.h>
+ #include <debug.h>
++#include <structs.h>
+ #include <prio.h>
+ 
+ #define INQUIRY_CMD     0x12
+Index: multipath-tools/libmultipath/prioritizers/hds.c
+===================================================================
+--- multipath-tools.orig/libmultipath/prioritizers/hds.c
++++ multipath-tools/libmultipath/prioritizers/hds.c
+@@ -74,6 +74,7 @@
+ 
+ #include <sg_include.h>
+ #include <debug.h>
++#include <structs.h>
+ #include <prio.h>
+ 
+ #define INQ_REPLY_LEN 255
+Index: multipath-tools/libmultipath/prioritizers/hp_sw.c
+===================================================================
+--- multipath-tools.orig/libmultipath/prioritizers/hp_sw.c
++++ multipath-tools/libmultipath/prioritizers/hp_sw.c
+@@ -15,6 +15,7 @@
+ #include <sg_include.h>
+ #include <debug.h>
+ #include <prio.h>
++#include <structs.h>
+ 
+ #define TUR_CMD_LEN		6
+ #define SCSI_CHECK_CONDITION	0x2
+Index: multipath-tools/libmultipath/prioritizers/ontap.c
+===================================================================
+--- multipath-tools.orig/libmultipath/prioritizers/ontap.c
++++ multipath-tools/libmultipath/prioritizers/ontap.c
+@@ -21,6 +21,7 @@
+ 
+ #include <sg_include.h>
+ #include <debug.h>
++#include <structs.h>
+ #include <prio.h>
+ 
+ #define INQUIRY_CMD	0x12
+Index: multipath-tools/libmultipath/prioritizers/random.c
+===================================================================
+--- multipath-tools.orig/libmultipath/prioritizers/random.c
++++ multipath-tools/libmultipath/prioritizers/random.c
+@@ -3,6 +3,7 @@
+ #include <sys/time.h>
+ #include <time.h>
+ 
++#include <structs.h>
+ #include <prio.h>
+ 
+ int getprio (struct path * pp)
+Index: multipath-tools/libmultipath/prioritizers/rdac.c
+===================================================================
+--- multipath-tools.orig/libmultipath/prioritizers/rdac.c
++++ multipath-tools/libmultipath/prioritizers/rdac.c
+@@ -4,6 +4,7 @@
+ 
+ #include <sg_include.h>
+ #include <debug.h>
++#include <structs.h>
+ #include <prio.h>
+ 
+ #define INQUIRY_CMD     0x12
+Index: multipath-tools/libmultipath/prioritizers/weighted.c
+===================================================================
+--- multipath-tools.orig/libmultipath/prioritizers/weighted.c
++++ multipath-tools/libmultipath/prioritizers/weighted.c
+@@ -27,6 +27,7 @@
+  */
+ 
+ #include <string.h>
++#include <structs.h>
+ #include <prio.h>
+ #include <debug.h>
+ #include <regex.h>
+Index: multipath-tools/libmultipath/propsel.c
+===================================================================
+--- multipath-tools.orig/libmultipath/propsel.c
++++ multipath-tools/libmultipath/propsel.c
+@@ -339,58 +339,60 @@ select_getuid (struct path * pp)
+ 	return 0;
+ }
+ 
+-struct prio *
++void
+ detect_prio(struct path * pp)
+ {
+ 	int ret;
++	struct prio *p = &pp->prio;
+ 
+ 	if (get_target_port_group_support(pp->fd) <= 0)
+-		return NULL;
++		return;
+ 	ret = get_target_port_group(pp->fd);
+ 	if (ret < 0)
+-		return NULL;
++		return;
+ 	if (get_asymmetric_access_state(pp->fd, ret) < 0)
+-		return NULL;
+-	return prio_lookup(PRIO_ALUA);
++		return;
++	prio_get(p, PRIO_ALUA);
+ }
+ 
+ extern int
+ select_prio (struct path * pp)
+ {
+ 	struct mpentry * mpe;
++	struct prio * p = &pp->prio;
+ 
+ 	if (pp->detect_prio == DETECT_PRIO_ON) {
+-		pp->prio = detect_prio(pp);
+-		if (pp->prio) {
++		detect_prio(pp);
++		if (prio_selected(p)) {
+ 			pp->prio_args = NULL;
+ 			condlog(3, "%s: prio = %s (detected setting)",
+-				pp->dev, pp->prio->name);
++				pp->dev, prio_name(p));
+ 			return 0;
+ 		}
+ 	}
+ 
+ 	if ((mpe = find_mpe(pp->wwid)) && mpe->prio_name) {
+-		pp->prio = prio_lookup(mpe->prio_name);
++		prio_get(p, mpe->prio_name);
+ 		pp->prio_args = mpe->prio_args;
+ 		condlog(3, "%s: prio = %s (LUN setting)",
+ 			pp->dev, mpe->prio_name);
+ 		return 0;
+ 	}
+ 	if (pp->hwe && pp->hwe->prio_name) {
+-		pp->prio = prio_lookup(pp->hwe->prio_name);
++		prio_get(p, pp->hwe->prio_name);
+ 		pp->prio_args = pp->hwe->prio_args;
+ 		condlog(3, "%s: prio = %s (controller setting)",
+ 			pp->dev, pp->hwe->prio_name);
+ 		return 0;
+ 	}
+ 	if (conf->prio_name) {
+-		pp->prio = prio_lookup(conf->prio_name);
++		prio_get(p, conf->prio_name);
+ 		pp->prio_args = conf->prio_args;
+ 		condlog(3, "%s: prio = %s (config file default)",
+ 			pp->dev, conf->prio_name);
+ 		return 0;
+ 	}
+-	pp->prio = prio_lookup(DEFAULT_PRIO);
++	prio_get(p, DEFAULT_PRIO);
+ 	condlog(3, "%s: prio = %s (internal default)",
+ 		pp->dev, DEFAULT_PRIO);
+ 	return 0;
+Index: multipath-tools/libmultipath/structs.c
+===================================================================
+--- multipath-tools.orig/libmultipath/structs.c
++++ multipath-tools/libmultipath/structs.c
+@@ -111,6 +111,8 @@ free_path (struct path * pp)
+ 		sysfs_device_put(pp->sysdev);
+ 	if (checker_selected(&pp->checker))
+ 		checker_put(&pp->checker);
++	if (prio_selected(&pp->prio))
++		prio_put(&pp->prio);
+ 
+ 	if (pp->fd >= 0)
+ 		close(pp->fd);
+Index: multipath-tools/libmultipath/structs.h
+===================================================================
+--- multipath-tools.orig/libmultipath/structs.h
++++ multipath-tools/libmultipath/structs.h
+@@ -2,7 +2,7 @@
+ #define _STRUCTS_H
+ 
+ #include <sys/types.h>
+-#include "list.h"
++#include "prio.h"
+ 
+ #define WWID_SIZE		128
+ #define SERIAL_SIZE		64
+@@ -192,7 +192,7 @@ struct path {
+ 	int wait_checks;
+ 	char * getuid;
+ 	char * prio_args;
+-	struct prio * prio;
++	struct prio prio;
+ 	struct checker checker;
+ 	struct multipath * mpp;
+ 	int fd;
+Index: multipath-tools/libmultipath/structs_vec.c
+===================================================================
+--- multipath-tools.orig/libmultipath/structs_vec.c
++++ multipath-tools/libmultipath/structs_vec.c
+@@ -91,7 +91,7 @@ orphan_path (struct path * pp)
+ 	pp->mpp = NULL;
+ 	pp->dmstate = PSTATE_UNDEF;
+ 	pp->getuid = NULL;
+-	pp->prio = NULL;
++	prio_put(&pp->prio);
+ 	checker_put(&pp->checker);
+ 	if (pp->fd >= 0)
+ 		close(pp->fd);

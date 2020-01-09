@@ -1,0 +1,85 @@
+---
+ libmultipath/devmapper.h |    2 ++
+ multipathd/main.c        |   32 ++++++++++++++++++++------------
+ 2 files changed, 22 insertions(+), 12 deletions(-)
+
+Index: multipath-tools/libmultipath/devmapper.h
+===================================================================
+--- multipath-tools.orig/libmultipath/devmapper.h
++++ multipath-tools/libmultipath/devmapper.h
+@@ -12,6 +12,8 @@ int dm_drv_get_rq (void);
+ int dm_ge_version(unsigned int t1, unsigned int t2, unsigned int t3);
+ int dm_simplecmd_flush (int, const char *, int);
+ int dm_simplecmd_noflush (int, const char *);
++int dm_addmap (int task, const char *target, struct multipath *mpp,
++	       int use_uuid, int ro);
+ int dm_addmap_create (struct multipath *mpp);
+ int dm_addmap_reload (struct multipath *mpp);
+ int dm_map_present (const char *);
+Index: multipath-tools/multipathd/main.c
+===================================================================
+--- multipath-tools.orig/multipathd/main.c
++++ multipath-tools/multipathd/main.c
+@@ -373,6 +373,7 @@ uev_check_for_rw (struct sysfs_device * 
+ 	struct path * pp;
+ 	struct multipath * mpp;
+ 	unsigned int ro;
++	char *mode;
+ 
+ 	condlog(3, "%s: change path (uevent)", dev->kernel);
+ 	pp = find_path_by_dev(vecs->pathvec, dev->kernel);
+@@ -383,35 +384,42 @@ uev_check_for_rw (struct sysfs_device * 
+ 	 * different */
+ 	prio_init(&pp->prio);
+ 	mpp = pp->mpp;
+-	if (mpp->reload_readwrite != RELOAD_RW_ON || !mpp->dmi ||
+-	    !mpp->dmi->read_only)
++	if (mpp->reload_readwrite != RELOAD_RW_ON || !mpp->dmi)
+ 		return 0;
+ 	if (sysfs_get_ro(pp->sysdev, &ro)) {
+ 		condlog(2, "%s: unable to get readonly status", dev->kernel);
+ 		return 1;
+ 	}
+-	if (ro == 1)
++	if ((ro && mpp->dmi->read_only) || (!ro && !mpp->dmi->read_only))
+ 		return 0;
++	mode = (ro)? "readonly" : "read/write";
+ 	/* device has switched from readonly to read/write */
+-	condlog(2, "%s: reloading map read/write", mpp->alias);
++	condlog(2, "%s: reloading map %s", mpp->alias, mode);
+ 	update_mpp_paths(mpp, vecs->pathvec);
+ 	setup_map(mpp);
+-	mpp->action = ACT_RELOAD;
+-	if (domap(mpp) <= 0) {
+-		condlog(0, "%s: Failed to reload map read/write : %s",
+-			mpp->alias, strerror(errno));
++	if (dm_addmap(DM_DEVICE_RELOAD, TGT_MPATH, mpp, 0, ro) <= 0 ||
++	    dm_simplecmd_noflush(DM_DEVICE_RESUME, mpp->alias) <= 0) {
++		condlog(0, "%s: Failed to reload map %s : %s",
++			mpp->alias, mode, strerror(errno));
+ 		return 1;
+ 	}
++	else {
++		mpp->stat_map_loads++;
++		condlog(2, "%s: load table [0 %llu %s %s]", mpp->alias,
++			mpp->size, TGT_MPATH, mpp->params);
++	}
+ 	dm_lib_release();
+ 	if (setup_multipath(vecs, mpp) != 0)
+ 		return 1;
+ 	sync_map_state(mpp);
+ 	if (mpp->dmi) {
+-		if (mpp->dmi->read_only)
+-			condlog(2, "%s: device still readonly", mpp->alias);
+-		else
+-			condlog(2, "%s: device switched to read/write",
++		if ((ro && !mpp->dmi->read_only) ||
++		    (!ro && mpp->dmi->read_only))
++			condlog(2, "%s: device access mode unchanged",
+ 				mpp->alias);
++		else
++			condlog(2, "%s: device switched to %s", mpp->alias,
++				mode);
+ 	}
+ 	return 0;
+ }

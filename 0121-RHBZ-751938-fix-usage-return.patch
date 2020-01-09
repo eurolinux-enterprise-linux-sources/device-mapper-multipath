@@ -1,0 +1,56 @@
+---
+ multipath/main.c |   12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+
+Index: multipath-tools/multipath/main.c
+===================================================================
+--- multipath-tools.orig/multipath/main.c
++++ multipath-tools/multipath/main.c
+@@ -119,7 +119,6 @@ usage (char * progname)
+ 		"          . multipath including the path with maj:min 'dev' (ex: 8:0)\n" \
+ 		);
+ 
+-	exit(1);
+ }
+ 
+ static int
+@@ -389,8 +388,10 @@ main (int argc, char *argv[])
+ 			break;
+ 		case 'v':
+ 			if (sizeof(optarg) > sizeof(char *) ||
+-			    !isdigit(optarg[0]))
++			    !isdigit(optarg[0])) {
+ 				usage (argv[0]);
++				exit(1);
++			}
+ 
+ 			conf->verbosity = atoi(optarg);
+ 			break;
+@@ -434,6 +435,7 @@ main (int argc, char *argv[])
+ 			if (conf->pgpolicy_flag == -1) {
+ 				printf("'%s' is not a valid policy\n", optarg);
+ 				usage(argv[0]);
++				exit(1);
+ 			}                
+ 			break;
+ 		case 'r':
+@@ -443,14 +445,18 @@ main (int argc, char *argv[])
+ 			break;
+ 		case 'h':
+ 			usage(argv[0]);
++			exit(0);
+ 		case ':':
+ 			fprintf(stderr, "Missing option arguement\n");
+-			usage(argv[0]);        
++			usage(argv[0]);
++			exit(1);
+ 		case '?':
+ 			fprintf(stderr, "Unknown switch: %s\n", optarg);
+ 			usage(argv[0]);
++			exit(1);
+ 		default:
+ 			usage(argv[0]);
++			exit(1);
+ 		}
+ 	}        
+ 	if (optind < argc) {

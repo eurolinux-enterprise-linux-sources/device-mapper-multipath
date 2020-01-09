@@ -1,0 +1,74 @@
+---
+ libmultipath/configure.c  |    6 +++---
+ multipathd/cli_handlers.c |    3 ++-
+ multipathd/main.c         |   12 ++++++------
+ 3 files changed, 11 insertions(+), 10 deletions(-)
+
+Index: multipath-tools/libmultipath/configure.c
+===================================================================
+--- multipath-tools.orig/libmultipath/configure.c
++++ multipath-tools/libmultipath/configure.c
+@@ -623,11 +623,11 @@ coalesce_paths (struct vectors * vecs, v
+ 
+ 			remove_map(mpp, vecs, 0);
+ 
+-			if (dm_flush_map(mpp->alias))
++			if (dm_flush_map(alias))
+ 				condlog(2, "%s: remove failed (dead)",
+-					mpp->alias);
++					alias);
+ 			else
+-				condlog(2, "%s: remove (dead)", mpp->alias);
++				condlog(2, "%s: remove (dead)", alias);
+ 		}
+ 	}
+ 	return 0;
+Index: multipath-tools/multipathd/cli_handlers.c
+===================================================================
+--- multipath-tools.orig/multipathd/cli_handlers.c
++++ multipath-tools/multipathd/cli_handlers.c
+@@ -564,7 +564,8 @@ found:
+ 		return 1;
+ 
+ 	dm_lib_release();
+-	setup_multipath(vecs, mpp);
++	if (setup_multipath(vecs, mpp) != 0)
++		return 1;
+ 	sync_map_state(mpp);
+ 
+ 	return 0;
+Index: multipath-tools/multipathd/main.c
+===================================================================
+--- multipath-tools.orig/multipathd/main.c
++++ multipath-tools/multipathd/main.c
+@@ -130,7 +130,6 @@ coalesce_maps(struct vectors *vecs, vect
+ 	struct multipath * ompp;
+ 	vector ompv = vecs->mpvec;
+ 	unsigned int i;
+-	int j;
+ 
+ 	vector_foreach_slot (ompv, ompp, i) {
+ 		if (!find_mp_by_wwid(nmpv, ompp->wwid)) {
+@@ -144,16 +143,17 @@ coalesce_maps(struct vectors *vecs, vect
+ 				/*
+ 				 * may be just because the device is open
+ 				 */
++				if (setup_multipath(vecs, ompp) != 0) {
++					i--;
++					continue;
++				}
+ 				if (!vector_alloc_slot(nmpv))
+ 					return 1;
+ 
+ 				vector_set_slot(nmpv, ompp);
+-				setup_multipath(vecs, ompp);
+ 
+-				if ((j = find_slot(ompv, (void *)ompp)) != -1)
+-					vector_del_slot(ompv, j);
+-
+-				continue;
++				vector_del_slot(ompv, i);
++				i--;
+ 			}
+ 			else {
+ 				dm_lib_release();

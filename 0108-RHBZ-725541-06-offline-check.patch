@@ -1,0 +1,114 @@
+---
+ libmultipath/discovery.c |   58 +++++++++++++++++++----------------------------
+ 1 file changed, 24 insertions(+), 34 deletions(-)
+
+Index: multipath-tools/libmultipath/discovery.c
+===================================================================
+--- multipath-tools.orig/libmultipath/discovery.c
++++ multipath-tools/libmultipath/discovery.c
+@@ -680,14 +680,15 @@ struct sysfs_device *sysfs_device_from_p
+ }
+ 
+ int
+-path_state (struct path * pp, char * buff)
++path_offline(struct path * pp)
+ {
+ 	struct sysfs_device * parent;
++	char buff[SCSI_STATE_SIZE];
+ 
+ 	pp->sysdev = sysfs_device_from_path(pp);
+ 	if (!pp->sysdev) {
+ 		condlog(1, "%s: failed to get sysfs information", pp->dev);
+-		return 1;
++		return PATH_WILD;
+ 	}
+ 
+ 	parent = sysfs_device_get_parent(pp->sysdev);
+@@ -697,45 +698,28 @@ path_state (struct path * pp, char * buf
+ 		parent = sysfs_device_get_parent(parent);
+ 	if (!parent) {
+ 		condlog(1, "%s: failed to get parent", pp->dev);
+-		return 1;
++		return PATH_WILD;
+ 	}
+ 
+ 	if (sysfs_get_state(parent, buff, SCSI_STATE_SIZE))
+-		return 1;
++		return PATH_WILD;
+ 
+ 	condlog(3, "%s: state = %s", pp->dev, buff);
+-	return 0;
+-}
+-
+-int
+-path_offline (struct path * pp)
+-{
+-	char buff[SCSI_STATE_SIZE];
+-
+-	if (path_state(pp, buff))
+-		return 0;
+ 
+ 	if (!strncmp(buff, "offline", 7)) {
+ 		pp->offline = 1;
+-		return 1;
++		return PATH_DOWN;
+ 	}
+ 	pp->offline = 0;
+-	return 0;
+-}
+-
+-int
+-path_blocked (struct path * pp)
+-{
+-	char buff[SCSI_STATE_SIZE];
+ 
+ 	if (pp->bus != SYSFS_BUS_SCSI)
+-		return 0;
+-	if (path_state(pp, buff))
+-		return 0;
+-	if (!strncmp(buff, "blocked", 7)) {
+-		return 1;
+-	}
+-	return 0;
++		return PATH_UP;
++	if (!strncmp(buff, "blocked", 7))
++		return PATH_PENDING;
++	else if (!strncmp(buff, "running", 7))
++		return PATH_UP;
++
++	return PATH_DOWN;
+ }
+ 
+ extern int
+@@ -852,13 +836,14 @@ get_state (struct path * pp, int daemon)
+ 		}
+ 	}
+ 	checker_clear_message(c);
+-	if (path_offline(pp)) {
+-		condlog(3, "%s: path offline", pp->dev);
+-		return PATH_DOWN;
++	state = path_offline(pp);
++	if (state == PATH_DOWN) {
++		condlog(3, "%s: path inaccessible", pp->dev);
++		return state;
+ 	}
+ 	if (daemon) {
+-		if (path_blocked(pp))
+-			return PATH_PENDING;
++		if (state == PATH_PENDING)
++			return state;
+ 		checker_set_async(c);
+ 	}
+ 	if (!pp->sysdev) {
+@@ -908,6 +893,11 @@ get_prio (struct path * pp)
+ 	if (!pp)
+ 		return 0;
+ 
++	if (path_offline(pp) == PATH_DOWN) {
++		pp->priority = PRIO_UNDEF;
++		return 0;
++	}
++
+ 	if (!pp->prio) {
+ 		if (!strlen(pp->wwid))
+ 			get_uid(pp);

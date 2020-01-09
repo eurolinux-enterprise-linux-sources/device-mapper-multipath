@@ -1,0 +1,175 @@
+---
+ libmultipath/uevent.c |   48 ++++++++++++++++--------------------------------
+ libmultipath/uevent.h |    7 +++----
+ multipathd/main.c     |   18 +++++++++++++++---
+ 3 files changed, 34 insertions(+), 39 deletions(-)
+
+Index: multipath-tools/libmultipath/uevent.c
+===================================================================
+--- multipath-tools.orig/libmultipath/uevent.c
++++ multipath-tools/libmultipath/uevent.c
+@@ -46,11 +46,15 @@
+ 
+ typedef int (uev_trigger)(struct uevent *, void * trigger_data);
+ 
+-pthread_t uevq_thr;
+-struct uevent *uevqhp, *uevqtp;
+-pthread_mutex_t uevq_lock, *uevq_lockp = &uevq_lock;
+-pthread_mutex_t uevc_lock, *uevc_lockp = &uevc_lock;
+-pthread_cond_t  uev_cond,  *uev_condp  = &uev_cond;
++struct uevent *uevqhp = NULL;
++struct uevent *uevqtp = NULL;
++pthread_mutex_t uevq_lock = PTHREAD_MUTEX_INITIALIZER;
++pthread_mutex_t *uevq_lockp = &uevq_lock;
++pthread_mutex_t uevc_lock = PTHREAD_MUTEX_INITIALIZER;
++pthread_mutex_t *uevc_lockp = &uevc_lock;
++pthread_cond_t uev_cond = PTHREAD_COND_INITIALIZER;
++pthread_cond_t *uev_condp = &uev_cond;
++
+ uev_trigger *my_uev_trigger;
+ void * my_trigger_data;
+ int servicing_uev;
+@@ -120,9 +124,13 @@ service_uevq(void)
+ /*
+  * Service the uevent queue.
+  */
+-static void *
+-uevq_thread(void * et)
++void
++uevent_dispatch(int (*uev_trigger)(struct uevent *, void * trigger_data),
++	      void *trigger_data)
+ {
++	my_uev_trigger = uev_trigger;
++	my_trigger_data = trigger_data;
++
+ 	mlockall(MCL_CURRENT | MCL_FUTURE);
+ 
+ 	while (1) {
+@@ -134,11 +142,9 @@ uevq_thread(void * et)
+ 
+ 		service_uevq();
+ 	}
+-	return NULL;
+ }
+ 
+-int uevent_listen(int (*uev_trigger)(struct uevent *, void * trigger_data),
+-		  void * trigger_data)
++int uevent_listen(void)
+ {
+ 	int sock;
+ 	struct sockaddr_nl snl;
+@@ -149,27 +155,14 @@ int uevent_listen(int (*uev_trigger)(str
+ 	int rcvsz = 0;
+ 	int rcvszsz = sizeof(rcvsz);
+ 	unsigned int *prcvszsz = (unsigned int *)&rcvszsz;
+-	pthread_attr_t attr;
+ 	const int feature_on = 1;
+ 
+-	my_uev_trigger = uev_trigger;
+-	my_trigger_data = trigger_data;
+-
+ 	/*
+ 	 * Queue uevents for service by dedicated thread so that the uevent
+ 	 * listening thread does not block on multipathd locks (vecs->lock)
+ 	 * thereby not getting to empty the socket's receive buffer queue
+ 	 * often enough.
+ 	 */
+-	uevqhp = uevqtp = NULL;
+-
+-	pthread_mutex_init(uevq_lockp, NULL);
+-	pthread_mutex_init(uevc_lockp, NULL);
+-	pthread_cond_init(uev_condp, NULL);
+-
+-	pthread_attr_init(&attr);
+-	pthread_attr_setstacksize(&attr, 64 * 1024);
+-	pthread_create(&uevq_thr, &attr, uevq_thread, NULL);
+ 
+ 	/*
+ 	 * First check whether we have a udev socket
+@@ -367,14 +360,5 @@ int uevent_listen(int (*uev_trigger)(str
+ 
+ exit:
+ 	close(sock);
+-
+-	pthread_mutex_lock(uevq_lockp);
+-	pthread_cancel(uevq_thr);
+-	pthread_mutex_unlock(uevq_lockp);
+-
+-	pthread_mutex_destroy(uevq_lockp);
+-	pthread_mutex_destroy(uevc_lockp);
+-	pthread_cond_destroy(uev_condp);
+-
+ 	return 1;
+ }
+Index: multipath-tools/libmultipath/uevent.h
+===================================================================
+--- multipath-tools.orig/libmultipath/uevent.h
++++ multipath-tools/libmultipath/uevent.h
+@@ -15,9 +15,8 @@ struct uevent {
+ 	char *envp[HOTPLUG_NUM_ENVP];
+ };
+ 
+-extern pthread_t uevq_thr;
+-
+-int uevent_listen(int (*store_uev)(struct uevent *, void * trigger_data),
+-		  void * trigger_data);
++int uevent_listen(void);
++void uevent_dispatch(int (*store_uev)(struct uevent *, void * trigger_data),
++		     void * trigger_data);
+ int is_uevent_busy(void);
+ void setup_thread_attr(pthread_attr_t *attr, size_t stacksize, int detached);
+Index: multipath-tools/multipathd/main.c
+===================================================================
+--- multipath-tools.orig/multipathd/main.c
++++ multipath-tools/multipathd/main.c
+@@ -764,12 +764,23 @@ out:
+ }
+ 
+ static void *
++uevqloop (void * ap)
++{
++	block_signal(SIGUSR1, NULL);
++	block_signal(SIGHUP, NULL);
++
++	uevent_dispatch(&uev_trigger, ap);
++
++	return NULL;
++}
++
++static void *
+ ueventloop (void * ap)
+ {
+ 	block_signal(SIGUSR1, NULL);
+ 	block_signal(SIGHUP, NULL);
+ 
+-	if (uevent_listen(&uev_trigger, ap))
++	if (uevent_listen())
+ 		fprintf(stderr, "error starting uevent listener");
+ 
+ 	return NULL;
+@@ -1490,7 +1501,7 @@ set_oom_adj (void)
+ static int
+ child (void * param)
+ {
+-	pthread_t check_thr, uevent_thr, uxlsnr_thr;
++	pthread_t check_thr, uevent_thr, uxlsnr_thr, uevq_thr;
+ 	pthread_attr_t log_attr, misc_attr;
+ 	struct vectors * vecs;
+ 	struct multipath * mpp;
+@@ -1565,6 +1576,7 @@ child (void * param)
+ 	conf->daemon = 1;
+ 	dm_udev_set_sync_support(0);
+ 	pthread_create(&uxlsnr_thr, &misc_attr, uxlsnrloop, vecs);
++	pthread_create(&uevent_thr, &misc_attr, ueventloop, NULL);
+ 	/*
+ 	 * fetch and configure both paths and multipaths
+ 	 */
+@@ -1581,7 +1593,7 @@ child (void * param)
+ 	 * start threads
+ 	 */
+ 	pthread_create(&check_thr, &misc_attr, checkerloop, vecs);
+-	pthread_create(&uevent_thr, &misc_attr, ueventloop, vecs);
++	pthread_create(&uevq_thr, &misc_attr, uevqloop, vecs);
+ 	pthread_attr_destroy(&misc_attr);
+ 
+ 	running_state = DAEMON_RUNNING;

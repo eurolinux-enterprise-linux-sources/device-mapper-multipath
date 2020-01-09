@@ -1,0 +1,103 @@
+---
+ libmultipath/discovery.c |    4 ++--
+ libmultipath/structs.h   |    1 +
+ multipath/main.c         |    2 +-
+ multipathd/main.c        |   10 ++++++++--
+ 4 files changed, 12 insertions(+), 5 deletions(-)
+
+Index: multipath-tools/libmultipath/discovery.c
+===================================================================
+--- multipath-tools.orig/libmultipath/discovery.c
++++ multipath-tools/libmultipath/discovery.c
+@@ -954,7 +954,7 @@ pathinfo (struct path *pp, vector hwtabl
+ 		goto blank;
+ 
+ 	if (mask & DI_CHECKER) {
+-		pp->state = get_state(pp, 0);
++		pp->chkrstate = pp->state = get_state(pp, 0);
+ 		if (pp->state == PATH_UNCHECKED || pp->state == PATH_WILD)
+ 			goto blank;
+ 	}
+@@ -977,7 +977,7 @@ blank:
+ 	 * Recoverable error, for example faulty or offline path
+ 	 */
+ 	memset(pp->wwid, 0, WWID_SIZE);
+-	pp->state = PATH_DOWN;
++	pp->chkrstate = pp->state = PATH_DOWN;
+ 
+ 	return 0;
+ }
+Index: multipath-tools/libmultipath/structs.h
+===================================================================
+--- multipath-tools.orig/libmultipath/structs.h
++++ multipath-tools/libmultipath/structs.h
+@@ -151,6 +151,7 @@ struct path {
+ 	int offline;
+ 	int state;
+ 	int dmstate;
++	int chkrstate;
+ 	int failcount;
+ 	int priority;
+ 	int pgindex;
+Index: multipath-tools/multipath/main.c
+===================================================================
+--- multipath-tools.orig/multipath/main.c
++++ multipath-tools/multipath/main.c
+@@ -141,7 +141,7 @@ update_paths (struct multipath * mpp)
+ 					/*
+ 					 * path is not in sysfs anymore
+ 					 */
+-					pp->state = PATH_DOWN;
++					pp->chkrstate = pp->state = PATH_DOWN;
+ 					continue;
+ 				}
+ 				pp->mpp = mpp;
+Index: multipath-tools/multipathd/main.c
+===================================================================
+--- multipath-tools.orig/multipathd/main.c
++++ multipath-tools/multipathd/main.c
+@@ -938,7 +938,7 @@ followover_should_failback(struct path *
+ 	vector_foreach_slot(pgp->paths, pp1, i) {
+ 		if (pp1 == pp)
+ 			continue;
+-		if (pp1->state != PATH_DOWN && pp1->state != PATH_SHAKY)
++		if (pp1->chkrstate != PATH_DOWN && pp1->chkrstate != PATH_SHAKY)
+ 			return 0;
+ 	}
+ 	return 1;
+@@ -1037,6 +1037,8 @@ check_path (struct vectors * vecs, struc
+ {
+ 	int newstate;
+ 	int new_path_up = 0;
++	int chkr_new_path_up = 0;
++	int oldchkrstate = pp->chkrstate;
+ 
+ 	if (!pp->mpp)
+ 		return;
+@@ -1065,6 +1067,7 @@ check_path (struct vectors * vecs, struc
+ 		pp->tick = 1;
+ 		return;
+ 	}
++	pp->chkrstate = newstate;
+ 	if (newstate != pp->state) {
+ 		int oldstate = pp->state;
+ 		pp->state = newstate;
+@@ -1107,6 +1110,9 @@ check_path (struct vectors * vecs, struc
+ 
+ 		new_path_up = 1;
+ 
++		if (oldchkrstate != PATH_UP && oldchkrstate != PATH_GHOST)
++			chkr_new_path_up = 1;
++
+ 		/*
+ 		 * if at least one path is up in a group, and
+ 		 * the group is disabled, re-enable it
+@@ -1153,7 +1159,7 @@ check_path (struct vectors * vecs, struc
+ 			pp->mpp->failback_tick =
+ 				pp->mpp->pgfailback + 1;
+ 		else if (pp->mpp->pgfailback == -FAILBACK_IMMEDIATE ||
+-			 (new_path_up && followover_should_failback(pp)))
++			 (chkr_new_path_up && followover_should_failback(pp)))
+ 			switch_pathgroup(pp->mpp);
+ 	}
+ }
