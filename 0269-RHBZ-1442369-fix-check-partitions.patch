@@ -1,0 +1,60 @@
+---
+ libmultipath/devmapper.c |   10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+Index: multipath-tools/libmultipath/devmapper.c
+===================================================================
+--- multipath-tools.orig/libmultipath/devmapper.c
++++ multipath-tools/libmultipath/devmapper.c
+@@ -982,6 +982,7 @@ dm_remove_partmaps (const char * mapname
+ 	char dev_t[32];
+ 	char devbasename[FILE_NAME_SIZE];
+ 	int r = 1;
++	char *p;
+ 
+ 	if (!(dmt = dm_task_create(DM_DEVICE_LIST)))
+ 		return 1;
+@@ -1015,6 +1016,7 @@ dm_remove_partmaps (const char * mapname
+ 		     * the same
+ 		     */
+ 		    !strncmp(names->name, devbasename, strlen(devbasename)) &&
++		    (strcmp(names->name, devbasename) != 0) &&
+ 
+ 		    /*
+ 		     * and the opencount is 0 for us to allow removal
+@@ -1029,7 +1031,8 @@ dm_remove_partmaps (const char * mapname
+ 		    /*
+ 		     * and the table maps over the multipath map
+ 		     */
+-		    strstr(params, dev_t)
++		    (p = strstr(params, dev_t)) &&
++		    !isdigit(*(p + strlen(dev_t)))
+ 		   ) {
+ 				/*
+ 				 * then it's a kpartx generated partition.
+@@ -1109,6 +1112,7 @@ dm_rename_partmaps (char * old, char * n
+ 	unsigned long long size;
+ 	char dev_t[32];
+ 	int r = 1;
++	char *p;
+ 
+ 	if (!(dmt = dm_task_create(DM_DEVICE_LIST)))
+ 		return 1;
+@@ -1141,6 +1145,7 @@ dm_rename_partmaps (char * old, char * n
+ 		     * the same
+ 		     */
+ 		    !strncmp(names->name, old, strlen(old)) &&
++		    (strcmp(names->name, old) != 0) &&
+ 
+ 		    /*
+ 		     * and we can fetch the map table from the kernel
+@@ -1150,7 +1155,8 @@ dm_rename_partmaps (char * old, char * n
+ 		    /*
+ 		     * and the table maps over the multipath map
+ 		     */
+-		    strstr(buff, dev_t)
++		    (p = strstr(buff, dev_t)) &&
++		    !isdigit(*(p + strlen(dev_t)))
+ 		   ) {
+ 				/*
+ 				 * then it's a kpartx generated partition.

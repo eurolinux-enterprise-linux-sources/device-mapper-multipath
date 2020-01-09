@@ -1,7 +1,7 @@
 Summary: Tools to manage multipath devices using device-mapper
 Name: device-mapper-multipath
 Version: 0.4.9
-Release: 100%{?dist}.1
+Release: 106%{?dist}
 License: GPL+
 Group: System Environment/Base
 URL: http://christophe.varoqui.free.fr/
@@ -278,7 +278,13 @@ Patch1264: 0264-RHBZ-1390472-dont-exit.patch
 Patch1265: 0265-RHBZ-1355669-max-sectors-kb.patch
 Patch1266: 0266-RHBZ-1401391-fix-prio-put.patch
 Patch1267: 0267-RHBZ-1401769-orphan-status.patch
-Patch1268: 0268-RHBZ-1497059-fix-reserve.patch
+Patch1268: 0268-RHBZ-1447328-fix-reserve.patch
+Patch1269: 0269-RHBZ-1442369-fix-check-partitions.patch
+Patch1270: 0270-RHBZ-1408287-remove-long-def-timeout.patch
+Patch1271: 0271-RHBZ-1444193-fix-hang-on-resume.patch
+Patch1272: 0272-RHBZ-1525217-3PAR-config.patch
+Patch1273: 0273-RHBZ-1550069-fix-messages.patch
+Patch1274: 0274-RHBZ-1573463-uevent-socket.patch
 
 
 # runtime
@@ -592,6 +598,12 @@ kpartx manages partition creation and removal for device-mapper devices.
 %patch1266 -p1
 %patch1267 -p1
 %patch1268 -p1
+%patch1269 -p1
+%patch1270 -p1
+%patch1271 -p1
+%patch1272 -p1
+%patch1273 -p1
+%patch1274 -p1
 cp %{SOURCE1} .
 
 %build
@@ -676,10 +688,41 @@ fi
 %{_mandir}/man8/kpartx.8.gz
 
 %changelog
-* Fri Sep 29 2017 Benjamin Marzinski <bmarzins@redhat.com> -0.4.9.100.1
-- Add 0268-RHBZ-1497059-fix-reserve.patch
+* Wed May 16 2018 Benjamin Marzinski <bmarzins@redhat.com> -0.4.9.106
+- Modify 0272-RHBZ-1525217-3PAR-config.patch
+  * revert path selector to round-robin
+- Resolves: #1578515
+
+* Mon May 14 2018 Benjamin Marzinski <bmarzins@redhat.com> -0.4.9.105
+- Add 0274-RHBZ-1573463-uevent-socket.patch
+  * retry binding socket and close it immediately when cancelled.
+- Resolves: #1573463
+
+* Wed Mar 14 2018 Benjamin Marzinski <bmarzins@redhat.com> -0.4.9.104
+- Add 0273-RHBZ-1550069-fix-messages.patch
+  * change error messages to warning messages, if adding or updating a
+    multipath device fails because the device is missing from sysfs
+- Resolves: #1550069
+
+* Wed Jan 17 2018 Benjamin Marzinski <bmarzins@redhat.com> -0.4.9.103
+- Fix spec file typo.
+- Related: #1408287, #1442369, #1444193, #1525217
+
+* Fri Jan 12 2018 Benjamin Marzinski <bmarzins@redhat.com> -0.4.9.102
+- Add 0269-RHBZ-1442369-fix-check-partitions.patch
+  * fix crash when partition minor starts with all the digits of the
+    multipath device number
+- Add 0270-RHBZ-1408287-remove-long-def-timeout.patch
+  * make all timeouts use checker_timeout if set and default to 60 sec.
+- Add 0271-RHBZ-1444193-fix-hang-on-resume.patch
+  * resume again if an invalid table left the device suspended
+- Add 0272-RHBZ-1525217-3PAR-config.patch
+- Resolves: #1408287, #1442369, #1444193, #1525217
+
+* Wed Sep 27 2017 Benjamin Marzinski <bmarzins@redhat.com> -0.4.9.101
+- Add 0268-RHBZ-1447328-fix-reserve.patch
   * stop waiting for threads that weren't successfully created
-- Resolves: bz #1497059
+- Resolves: #1447328
 
 * Thu Jan  5 2017 Benjamin Marzinski <bmarzins@redhat.com> -0.4.9.100
 - Modify 0261-RHBZ-1377532-disable-changed-paths.patch

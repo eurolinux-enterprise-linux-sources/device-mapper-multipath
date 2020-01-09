@@ -1,0 +1,118 @@
+---
+ libmultipath/configure.c |   37 ++++++++++++++++++++++++++++---------
+ libmultipath/devmapper.c |   28 ++++++++++++++++++++++++++++
+ libmultipath/devmapper.h |    1 +
+ 3 files changed, 57 insertions(+), 9 deletions(-)
+
+Index: multipath-tools/libmultipath/configure.c
+===================================================================
+--- multipath-tools.orig/libmultipath/configure.c
++++ multipath-tools/libmultipath/configure.c
+@@ -623,16 +623,28 @@ domap (struct multipath * mpp)
+ 
+ 	case ACT_RELOAD:
+ 		r = dm_addmap_reload(mpp);
++		if (!r)
++			break;
++		r = dm_simplecmd_noflush(DM_DEVICE_RESUME, mpp->alias,
++					 udev_flags);
+ 		if (r)
+-			r = dm_simplecmd_noflush(DM_DEVICE_RESUME, mpp->alias,
+-						 udev_flags);
++			break;
++		if (dm_is_suspended(mpp->alias))
++			dm_simplecmd_noflush(DM_DEVICE_RESUME, mpp->alias,
++					     udev_flags);
+ 		break;
+ 
+ 	case ACT_RESIZE:
+ 		r = dm_addmap_reload(mpp);
++		if (!r)
++			break;
++		r = dm_simplecmd_flush(DM_DEVICE_RESUME, mpp->alias, 1,
++				       udev_flags);
+ 		if (r)
+-			r = dm_simplecmd_flush(DM_DEVICE_RESUME, mpp->alias, 1,
+-					       udev_flags);
++			break;
++		if (dm_is_suspended(mpp->alias))
++			dm_simplecmd_flush(DM_DEVICE_RESUME, mpp->alias, 1,
++					   udev_flags);
+ 		break;
+ 
+ 	case ACT_RENAME:
+@@ -641,11 +653,18 @@ domap (struct multipath * mpp)
+ 
+ 	case ACT_RENAME2:
+ 		r = dm_rename(mpp->alias_old, mpp->alias, mpp->skip_kpartx);
+-		if (r) {
+-			r = dm_addmap_reload(mpp);
+-			if (r)
+-				r = dm_simplecmd_noflush(DM_DEVICE_RESUME, mpp->alias, udev_flags);
+-		}
++		if (!r)
++			break;
++		r = dm_addmap_reload(mpp);
++		if (!r)
++			break;
++		r = dm_simplecmd_noflush(DM_DEVICE_RESUME, mpp->alias,
++					 udev_flags);
++		if (r)
++			break;
++		if (dm_is_suspended(mpp->alias))
++			dm_simplecmd_noflush(DM_DEVICE_RESUME, mpp->alias,
++					     udev_flags);
+ 		break;
+ 
+ 	default:
+Index: multipath-tools/libmultipath/devmapper.c
+===================================================================
+--- multipath-tools.orig/libmultipath/devmapper.c
++++ multipath-tools/libmultipath/devmapper.c
+@@ -332,6 +332,34 @@ dm_addmap_reload (struct multipath *mpp)
+ 	return dm_addmap(DM_DEVICE_RELOAD, TGT_MPATH, mpp, 0, ADDMAP_RO, SKIP_KPARTX_OFF);
+ }
+ 
++int
++dm_is_suspended(const char *name)
++{
++	int r = 0;
++	struct dm_task *dmt;
++	struct dm_info info;
++
++	if (!(dmt = dm_task_create(DM_DEVICE_INFO)))
++		return 0;
++
++	if (!dm_task_set_name(dmt, name))
++		goto out;
++
++	dm_task_no_open_count(dmt);
++
++	if (!dm_task_run(dmt))
++		goto out;
++
++	if (!dm_task_get_info(dmt, &info))
++		goto out;
++
++	if (info.suspended)
++		r = 1;
++out:
++	dm_task_destroy(dmt);
++	return r;
++}
++
+ extern int
+ dm_map_present (const char * str)
+ {
+Index: multipath-tools/libmultipath/devmapper.h
+===================================================================
+--- multipath-tools.orig/libmultipath/devmapper.h
++++ multipath-tools/libmultipath/devmapper.h
+@@ -40,6 +40,7 @@ int dm_enablegroup(char * mapname, int i
+ int dm_disablegroup(char * mapname, int index);
+ int dm_get_maps (vector mp);
+ int dm_geteventnr (char *name);
++int dm_is_suspended(const char *name);
+ int dm_get_minor (char *name);
+ char * dm_mapname(int major, int minor);
+ int dm_remove_partmaps (const char * mapname, int need_sync);

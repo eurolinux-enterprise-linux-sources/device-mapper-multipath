@@ -1,0 +1,40 @@
+---
+ multipathd/main.c |   21 +++++++++++++++------
+ 1 file changed, 15 insertions(+), 6 deletions(-)
+
+Index: multipath-tools/multipathd/main.c
+===================================================================
+--- multipath-tools.orig/multipathd/main.c
++++ multipath-tools/multipathd/main.c
+@@ -248,16 +248,25 @@ ev_add_map (struct sysfs_device * dev, s
+ 	int map_present;
+ 	int r = 1;
+ 
+-	if (sysfs_attr_get_value(dev->devpath, "dev", dev_t, BLK_DEV_SIZE) != 0)
+-		return 1;
+-
+-	if (sscanf(dev_t, "%d:%d", &major, &minor) != 2)
++	if (sysfs_attr_get_value(dev->devpath, "dev", dev_t, BLK_DEV_SIZE) != 0) {
++		condlog(3, "%s: device missing in sysfs. cannot add",
++			dev->kernel);
++		return 0;
++	}
++	if (sscanf(dev_t, "%d:%d", &major, &minor) != 2) {
++		condlog(0, "%s: invalid major:minor (%s). cannot add",
++			dev->kernel,
++			dev_t);
+ 		return 1;
++	}
+ 
+ 	alias = dm_mapname(major, minor);
+ 
+-	if (!alias)
+-		return 1;
++	if (!alias) {
++		condlog(3, "%s: cannot find dm device. cannot add",
++			dev->kernel);
++		return 0;
++	}
+ 
+ 	map_present = dm_map_present(alias);
+ 
