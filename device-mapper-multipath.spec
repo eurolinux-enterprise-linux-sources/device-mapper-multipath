@@ -1,7 +1,7 @@
 Summary: Tools to manage multipath devices using device-mapper
 Name: device-mapper-multipath
 Version: 0.4.9
-Release: 119%{?dist}
+Release: 119%{?dist}.1
 License: GPL+
 Group: System Environment/Base
 URL: http://christophe.varoqui.free.fr/
@@ -243,6 +243,7 @@ Patch0233: 0233-RHBZ-1451852-1482629-nimble-config.patch
 Patch0234: 0234-RHBZ-1500109-doc-typo.patch
 Patch0235: 0235-RHBZ-1480638-NVMe-support.patch
 Patch0236: 0236-RHBZ-1525348-fix-msg.patch
+Patch0237: 0237-RHBZ-1607749-add-transport-blacklist.patch
 
 # runtime
 Requires: %{name}-libs = %{version}-%{release}
@@ -566,6 +567,7 @@ device-mapper-multipath's libdmmp C API library
 %patch0234 -p1
 %patch0235 -p1
 %patch0236 -p1
+%patch0237 -p1
 cp %{SOURCE1} .
 
 %build
@@ -683,6 +685,11 @@ fi
 %{_pkgconfdir}/libdmmp.pc
 
 %changelog
+* Tue Jul 24 2018 Benjamin Marzinski <bmarzins@redhat.com> 0.4.9-119.1
+- Add 0237-RHBZ-1607749-add-transport-blacklist.patch
+  * and new blacklist option, "protocol"
+- Resolves: bz #1607749
+
 * Wed Jan 31 2018 Benjamin Marzinski <bmarzins@redhat.com> 0.4.9-119
 - Add 0236-RHBZ-1525348-fix-msg.patch
   * reduced message serverity level
