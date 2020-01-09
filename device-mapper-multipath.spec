@@ -1,7 +1,7 @@
 Summary: Tools to manage multipath devices using device-mapper
 Name: device-mapper-multipath
 Version: 0.4.9
-Release: 123%{?dist}
+Release: 127%{?dist}
 License: GPL+
 Group: System Environment/Base
 URL: http://christophe.varoqui.free.fr/
@@ -256,6 +256,15 @@ Patch0246: 0246-RHBZ-1593459-add-transport-blacklist.patch
 Patch0247: 0247-RHBZ-1585824-mpathconf-allow-doc.patch
 Patch0248: 0248-RHBZ-1594360-fix-param-rk-doc.patch
 Patch0249: 0249-RHBZ-1610263-mpathpersist-max-fds.patch
+Patch0250: 0250-RHBZ-1610867-rescan-change.patch
+Patch0251: 0251-RHBZ-1614011-discovery-timeout.patch
+Patch0252: 0252-RHBZ-1623595-cmd-error-status.patch
+Patch0253: 0253-RHBZ-1618549-mix-hw-handler.patch
+Patch0254: 0254-RHBZ-1635819-fix-mpathpersist-crash.patch
+Patch0255: 0255-RHBZ-1638651-marginal-path.patch
+Patch0256: 0256-RHBZ-1672175-retry-no-fd-paths.patch
+Patch0257: 0257-RHBZ-1679556-dont-check-dm-devices.patch
+Patch0258: 0258-RHBZ-1634183-ANA-prioritizer.patch
 
 # runtime
 Requires: %{name}-libs = %{version}-%{release}
@@ -592,6 +601,15 @@ device-mapper-multipath's libdmmp C API library
 %patch0247 -p1
 %patch0248 -p1
 %patch0249 -p1
+%patch0250 -p1
+%patch0251 -p1
+%patch0252 -p1
+%patch0253 -p1
+%patch0254 -p1
+%patch0255 -p1
+%patch0256 -p1
+%patch0257 -p1
+%patch0258 -p1
 cp %{SOURCE1} .
 
 %build
@@ -709,6 +727,41 @@ fi
 %{_pkgconfdir}/libdmmp.pc
 
 %changelog
+* Thu Mar 14 2019 Benjamin Marzinski <bmarzins@redhat.com> 0.4.9-127
+- Add 0256-RHBZ-1672175-retry-no-fd-paths.patch
+  * retry adding paths if they couldn't be opened initially
+- Add 0257-RHBZ-1679556-dont-check-dm-devices.patch
+  * don't check if dm devices are multipath paths
+- Add 0258-RHBZ-1634183-ANA-prioritizer.patch
+  * Add NVMe ANA path prioritizer
+- Resolves: bz #1634183, #1672175, #1679556
+
+* Wed Feb 13 2019 Benjamin Marzinski <bmarzins@redhat.com> 0.4.9-126
+- Modify 0255-RHBZ-1638651-marginal-path.patch
+  * Fix memory leak
+- Resolves: bz #1638651
+
+* Wed Feb 13 2019 Benjamin Marzinski <bmarzins@redhat.com> 0.4.9-125
+- Modify 0250-RHBZ-1610867-rescan-change.patch
+  * Fix memory Leak
+- Modify 0255-RHBZ-1638651-marginal-path.patch
+  * Fix NULL dereference
+- Refresh 0252-RHBZ-1623595-cmd-error-status.patch
+- Resolves: bz #1610867, #1638651
+
+* Fri Feb  1 2019 Benjamin Marzinski <bmarzins@redhat.com> 0.4.9-124
+- Add 0250-RHBZ-1610867-rescan-change.patch
+  * Update multipath devices on change events.
+- Add 0251-RHBZ-1614011-discovery-timeout.patch
+- Add 0252-RHBZ-1623595-cmd-error-status.patch
+- Add 0253-RHBZ-1618549-mix-hw-handler.patch
+  * Don't retain attached hw handler when different hw handlers are
+    attached to different paths
+- Add 0254-RHBZ-1635819-fix-mpathpersist-crash.patch
+- Add 0255-RHBZ-1638651-marginal-path.patch
+  * backport marginal_path options from upstream
+- Resolves: bz #1610867, #1614011, #1618549, #1623595, #1635819, #1638651
+
 * Fri Aug 10 2018 Benjamin Marzinski <bmarzins@redhat.com> 0.4.9-123
 - Add 0249-RHBZ-1610263-mpathpersist-max-fds.patch
   * make mpathpersist honor max_fds multipath.conf parameter
