@@ -1,0 +1,82 @@
+---
+ libmultipath/configure.c |    9 ++-------
+ libmultipath/structs.c   |    2 ++
+ multipathd/main.c        |   13 +++++++------
+ 3 files changed, 11 insertions(+), 13 deletions(-)
+
+Index: multipath-tools/libmultipath/configure.c
+===================================================================
+--- multipath-tools.orig/libmultipath/configure.c
++++ multipath-tools/libmultipath/configure.c
+@@ -297,13 +297,8 @@ setup_map (struct multipath * mpp)
+ 	 * assign paths to path groups -- start with no groups and all paths
+ 	 * in mpp->paths
+ 	 */
+-	if (mpp->pg) {
+-		vector_foreach_slot (mpp->pg, pgp, i)
+-			free_pathgroup(pgp, KEEP_PATHS);
+-
+-		vector_free(mpp->pg);
+-		mpp->pg = NULL;
+-	}
++	free_pgvec(mpp->pg, KEEP_PATHS);
++	mpp->pg = NULL;
+ 	if (mpp->pgpolicyfn && mpp->pgpolicyfn(mpp))
+ 		return 1;
+ 
+Index: multipath-tools/libmultipath/structs.c
+===================================================================
+--- multipath-tools.orig/libmultipath/structs.c
++++ multipath-tools/libmultipath/structs.c
+@@ -163,6 +163,7 @@ free_pathgroup (struct pathgroup * pgp, 
+ 		return;
+ 
+ 	free_pathvec(pgp->paths, free_paths);
++	pgp->paths = NULL;
+ 	FREE(pgp);
+ }
+ 
+@@ -252,6 +253,7 @@ free_multipath (struct multipath * mpp, 
+ 
+ 	free_pathvec(mpp->paths, free_paths);
+ 	free_pgvec(mpp->pg, free_paths);
++	mpp->pg = NULL;
+ 	FREE_PTR(mpp->mpcontext);
+ 	FREE(mpp);
+ }
+Index: multipath-tools/multipathd/main.c
+===================================================================
+--- multipath-tools.orig/multipathd/main.c
++++ multipath-tools/multipathd/main.c
+@@ -699,7 +699,7 @@ ev_remove_path (char * devname, struct v
+ 			 * update our state from kernel
+ 			 */
+ 			if (setup_multipath(vecs, mpp)) {
+-				goto fail;
++				return 1;
+ 			}
+ 			sync_map_state(mpp);
+ 
+@@ -1805,16 +1805,17 @@ child (void * param)
+ 	FREE(vecs);
+ 	vecs = NULL;
+ 	*/
+-	condlog(2, "--------shut down-------");
+-
+-	if (logsink)
+-		log_thread_stop();
+-
+ 	dm_lib_release();
+ 	dm_lib_exit();
+ 
+ 	cleanup_prio();
+ 	cleanup_checkers();
++
++	condlog(2, "--------shut down-------");
++
++	if (logsink)
++		log_thread_stop();
++
+ 	/*
+ 	 * Freeing config must be done after condlog() and dm_lib_exit(),
+ 	 * because logging functions like dlog() and dm_write_log()

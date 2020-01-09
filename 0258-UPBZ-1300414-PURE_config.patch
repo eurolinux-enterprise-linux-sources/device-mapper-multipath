@@ -1,0 +1,61 @@
+---
+ libmultipath/hwtable.c  |   18 ++++++++++++++++++
+ multipath.conf.defaults |   18 ++++++++++++++++++
+ 2 files changed, 36 insertions(+)
+
+Index: multipath-tools/libmultipath/hwtable.c
+===================================================================
+--- multipath-tools.orig/libmultipath/hwtable.c
++++ multipath-tools/libmultipath/hwtable.c
+@@ -1351,6 +1351,24 @@ static struct hwentry default_hw[] = {
+ 		.checker_name  = TUR,
+ 		.prio_name     = DEFAULT_PRIO,
+ 	},
++	{
++		.vendor        = "PURE",
++		.product       = "FlashArray",
++		.getuid        = DEFAULT_GETUID,
++		.features      = DEFAULT_FEATURES,
++		.hwhandler     = DEFAULT_HWHANDLER,
++		.selector      = "queue-length 0",
++		.pgpolicy      = MULTIBUS,
++		.pgfailback    = -FAILBACK_IMMEDIATE,
++		.checker_name  = TUR,
++		.fast_io_fail  = 10,
++		.user_friendly_names = USER_FRIENDLY_NAMES_OFF,
++		.prio_name     = DEFAULT_PRIO,
++		.dev_loss      = 60,
++		.rr_weight     = RR_WEIGHT_NONE,
++		.minio         = DEFAULT_MINIO,
++		.minio_rq      = DEFAULT_MINIO_RQ,
++	},
+ 	/*
+ 	 * EOL
+ 	 */
+Index: multipath-tools/multipath.conf.defaults
+===================================================================
+--- multipath-tools.orig/multipath.conf.defaults
++++ multipath-tools/multipath.conf.defaults
+@@ -1190,4 +1190,22 @@
+ #		rr_min_io 1000
+ #		rr_min_io_rq 1
+ #	}
++#	device {
++#		vendor "PURE"
++#		product "FlashArray"
++#		path_grouping_policy multibus
++#		getuid_callout "/lib/udev/scsi_id --whitelisted --device=/dev/%n"
++#		path_selector "queue-length 0"
++#		path_checker tur
++#		features "0"
++#		hardware_handler "0"
++#		prio const
++#		failback immediate
++#		rr_weight uniform
++#		rr_min_io 1000
++#		rr_min_io_rq 1
++#		fast_io_fail_tmo 10
++#		dev_loss_tmo 60
++#		user_friendly_names no
++#	}
+ #}

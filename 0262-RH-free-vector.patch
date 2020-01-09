@@ -1,0 +1,54 @@
+---
+ multipathd/main.c |   14 ++++++++++----
+ 1 file changed, 10 insertions(+), 4 deletions(-)
+
+Index: multipath-tools/multipathd/main.c
+===================================================================
+--- multipath-tools.orig/multipathd/main.c
++++ multipath-tools/multipathd/main.c
+@@ -1428,7 +1428,7 @@ configure (struct vectors * vecs, int st
+ 	 */
+ 	ret = path_discovery(vecs->pathvec, conf, DI_ALL);
+ 	if (ret < 0)
+-		return 1;
++		goto fail;
+ 
+ 	vector_foreach_slot (vecs->pathvec, pp, i){
+ 		if (filter_path(conf, pp) > 0){
+@@ -1440,20 +1440,20 @@ configure (struct vectors * vecs, int st
+ 			pp->checkint = conf->checkint;
+ 	}
+ 	if (map_discovery(vecs))
+-		return 1;
++		goto fail;
+ 
+ 	/*
+ 	 * create new set of maps & push changed ones into dm
+ 	 */
+ 	if (coalesce_paths(vecs, mpvec, NULL, 1))
+-		return 1;
++		goto fail_maps;
+ 
+ 	/*
+ 	 * may need to remove some maps which are no longer relevant
+ 	 * e.g., due to blacklist changes in conf file
+ 	 */
+ 	if (coalesce_maps(vecs, mpvec))
+-		return 1;
++		goto fail_maps;
+ 
+ 	dm_lib_release();
+ 
+@@ -1491,6 +1491,12 @@ configure (struct vectors * vecs, int st
+ 		}
+ 	}
+ 	return 0;
++fail_maps:
++	vector_foreach_slot(mpvec, mpp, i)
++		remove_map(mpp, vecs, 0);
++fail:
++	vector_free(mpvec);
++	return 1;
+ }
+ 
+ int

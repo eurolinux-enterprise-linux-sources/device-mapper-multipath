@@ -1,0 +1,25 @@
+---
+ libmultipath/Makefile |    3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+Index: multipath-tools/libmultipath/Makefile
+===================================================================
+--- multipath-tools.orig/libmultipath/Makefile
++++ multipath-tools/libmultipath/Makefile
+@@ -5,6 +5,7 @@
+ include ../Makefile.inc
+ 
+ LIBS = libmultipath.so
++LIBDEPS = -lpthread -ldl -ldevmapper -ludev
+ 
+ OBJS = memory.o parser.o vector.o devmapper.o callout.o \
+        hwtable.o blacklist.o util.o dmparser.o config.o \
+@@ -25,7 +26,7 @@ CFLAGS += -pthread
+ all: $(LIBS)
+ 
+ $(LIBS): $(OBJS)
+-	$(CC) $(SHARED_FLAGS) -Wl,-soname,$@ $(CFLAGS) -o $@ $(OBJS)
++	$(CC) $(SHARED_FLAGS) -Wl,-soname,$@ $(CFLAGS) -o $@ $(OBJS) $(LIBDEPS)
+ 
+ install:
+ 	$(INSTALL_PROGRAM) -d $(DESTDIR)$(syslibdir)

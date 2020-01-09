@@ -1,0 +1,17 @@
+---
+ libmultipath/prio.c |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+Index: multipath-tools/libmultipath/prio.c
+===================================================================
+--- multipath-tools.orig/libmultipath/prio.c
++++ multipath-tools/libmultipath/prio.c
+@@ -173,7 +173,7 @@ void prio_put (struct prio * dst)
+ {
+ 	struct prio * src;
+ 
+-	if (!dst)
++	if (!dst || !dst->getprio)
+ 		return;
+ 
+ 	src = prio_lookup(dst->name);

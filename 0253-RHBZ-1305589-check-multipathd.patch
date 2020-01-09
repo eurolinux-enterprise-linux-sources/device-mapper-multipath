@@ -1,0 +1,98 @@
+---
+ libmultipath/config.c    |    1 +
+ libmultipath/config.h    |    1 +
+ libmultipath/configure.c |    8 +++++---
+ multipath/main.c         |   10 ++++++++++
+ 4 files changed, 17 insertions(+), 3 deletions(-)
+
+Index: multipath-tools/libmultipath/configure.c
+===================================================================
+--- multipath-tools.orig/libmultipath/configure.c
++++ multipath-tools/libmultipath/configure.c
+@@ -847,6 +847,9 @@ coalesce_paths (struct vectors * vecs, v
+ 			else
+ 				remove_map(mpp, vecs, 0);
+ 		}
++
++		/* By now at least one multipath device map is processed */
++		conf->maps_present = 1;
+ 	}
+ 	/*
+ 	 * Flush maps with only dead paths (ie not in sysfs)
+@@ -855,15 +858,14 @@ coalesce_paths (struct vectors * vecs, v
+ 	if (newmp) {
+ 		vector_foreach_slot (newmp, mpp, i) {
+ 			char alias[WWID_SIZE];
+-			int j;
+ 
+ 			if (!deadmap(mpp))
+ 				continue;
+ 
+ 			strncpy(alias, mpp->alias, WWID_SIZE);
+ 
+-			if ((j = find_slot(newmp, (void *)mpp)) != -1)
+-				vector_del_slot(newmp, j);
++			vector_del_slot(newmp, i);
++			i--;
+ 
+ 			remove_map(mpp, vecs, 0);
+ 
+Index: multipath-tools/multipath/main.c
+===================================================================
+--- multipath-tools.orig/multipath/main.c
++++ multipath-tools/multipath/main.c
+@@ -54,6 +54,7 @@
+ #include <sys/time.h>
+ #include <sys/resource.h>
+ #include <finder.h>
++#include <file.h>
+ #include "dev_t.h"
+ 
+ int logsink;
+@@ -173,6 +174,9 @@ get_dm_mpvec (vector curmp, vector pathv
+ 	if (dm_get_maps(curmp))
+ 		return 1;
+ 
++	if (VECTOR_SIZE(curmp))
++		conf->maps_present = 1;
++
+ 	vector_foreach_slot (curmp, mpp, i) {
+ 		/*
+ 		 * discard out of scope maps
+@@ -599,6 +603,12 @@ main (int argc, char *argv[])
+ 	}
+ 	while ((r = configure()) < 0)
+ 		condlog(3, "restart multipath configuration process");
++	if (conf->maps_present && !pidfile_check(DEFAULT_PIDFILE)) {
++		printf("\nmultipath device maps are present, but "
++		       "'multipathd' service is not running\n");
++		printf("IO failover/failback will not work without "
++		       "'multipathd' service running\n");
++	}
+ 	
+ out:
+ 	dm_udev_wait(conf->cookie);
+Index: multipath-tools/libmultipath/config.c
+===================================================================
+--- multipath-tools.orig/libmultipath/config.c
++++ multipath-tools/libmultipath/config.c
+@@ -577,6 +577,7 @@ load_config (char * file)
+ 	conf->replace_wwid_whitespace = 0;
+ 	conf->force_sync = 0;
+ 	conf->processed_main_config = 0;
++	conf->maps_present = 0;
+ 
+ 	/*
+ 	 * preload default hwtable
+Index: multipath-tools/libmultipath/config.h
+===================================================================
+--- multipath-tools.orig/libmultipath/config.h
++++ multipath-tools/libmultipath/config.h
+@@ -118,6 +118,7 @@ struct config {
+ 	int processed_main_config;
+ 	int delay_watch_checks;
+ 	int delay_wait_checks;
++	int maps_present;
+ 
+ 	char * dev;
+ 	char * sysfs_dir;

@@ -1,7 +1,7 @@
 Summary: Tools to manage multipath devices using device-mapper
 Name: device-mapper-multipath
 Version: 0.4.9
-Release: 93%{?dist}
+Release: 100%{?dist}
 License: GPL+
 Group: System Environment/Base
 URL: http://christophe.varoqui.free.fr/
@@ -261,12 +261,29 @@ Patch1247: 0247-RHBZ-1283181-fix-remove-crash.patch
 Patch1248: 0248-RHBZ-1289353-alua-pref-arg.patch
 Patch1249: 0249-RHBZ-1208521-fix-typo-configure.patch
 Patch1250: 0250-RHBZ-1316165-fix-i686-size-bug.patch
+Patch1251: 0251-RHBZ-1349376-fix-makefile.patch
+Patch1252: 0252-RHBZ-1333334-huawei-config.patch
+Patch1253: 0253-RHBZ-1305589-check-multipathd.patch
+Patch1254: 0254-RHBZ-1310320-no-kpartx.patch
+Patch1255: 0255-UPBZ-1322532-disable-reinstate.patch
+Patch1256: 0256-RHBZ-1324764-man-page-typo.patch
+Patch1257: 0257-UPBZ-1328077-resize-map.patch
+Patch1258: 0258-UPBZ-1300414-PURE_config.patch
+Patch1259: 0259-UPBZ-1343747-dont-fail-discovery.patch
+Patch1260: 0260-RHBZ-1364879-check-mpath-prefix.patch
+Patch1261: 0261-RHBZ-1377532-disable-changed-paths.patch
+Patch1262: 0262-RH-free-vector.patch
+Patch1263: 0263-RHBZ-1365710-no-use-after-free.patch
+Patch1264: 0264-RHBZ-1390472-dont-exit.patch
+Patch1265: 0265-RHBZ-1355669-max-sectors-kb.patch
+Patch1266: 0266-RHBZ-1401391-fix-prio-put.patch
+Patch1267: 0267-RHBZ-1401769-orphan-status.patch
 
 
 # runtime
 Requires: %{name}-libs = %{version}-%{release}
 Requires: kpartx = %{version}-%{release}
-Requires: device-mapper >= 1.02.89
+Requires: device-mapper >= 1.02.117-10.el6
 Requires(post): chkconfig
 Requires(preun): chkconfig
 Requires(preun): initscripts
@@ -556,6 +573,23 @@ kpartx manages partition creation and removal for device-mapper devices.
 %patch1248 -p1
 %patch1249 -p1
 %patch1250 -p1
+%patch1251 -p1
+%patch1252 -p1
+%patch1253 -p1
+%patch1254 -p1
+%patch1255 -p1
+%patch1256 -p1
+%patch1257 -p1
+%patch1258 -p1
+%patch1259 -p1
+%patch1260 -p1
+%patch1261 -p1
+%patch1262 -p1
+%patch1263 -p1
+%patch1264 -p1
+%patch1265 -p1
+%patch1266 -p1
+%patch1267 -p1
 cp %{SOURCE1} .
 
 %build
@@ -640,6 +674,68 @@ fi
 %{_mandir}/man8/kpartx.8.gz
 
 %changelog
+* Thu Jan  5 2017 Benjamin Marzinski <bmarzins@redhat.com> -0.4.9.100
+- Modify 0261-RHBZ-1377532-disable-changed-paths.patch
+  * add man page information
+- Refresh 0265-RHBZ-1355669-max-sectors-kb.patch
+- Related: #1377532
+
+* Tue Dec  6 2016 Benjamin Marzinski <bmarzins@redhat.com> -0.4.9.99
+- Change devicemapper Requires to >= 1.02.117-10.el6 (bz #1344381)
+- Resolves: #1344381
+
+* Tue Dec  6 2016 Benjamin Marzinski <bmarzins@redhat.com> -0.4.9.98
+- Add 0266-RHBZ-1401391-fix-prio-put.patch
+  * don't try to drop a nonexistant prio handler
+- Add 0267-RHBZ-1401769-orphan-status.patch
+  * don't print out checker and device status for orphan paths
+- Resolves: bz #1401391, #1401769
+
+* Thu Nov 10 2016 Benjamin Marzinski <bmarzins@redhat.com> -0.4.9.97
+- Add 0265-RHBZ-1355669-max-sectors-kb.patch
+  * add "max_sectors_kb" config option to set this value on all paths
+- Change devicemapper Requires to >= 1.02.117-9.el6 (bz #1344381)
+  * forces multipath to use latest version of blk-availability
+- Resolves: bz #1344381, #1355669
+
+* Thu Nov  3 2016 Benjamin Marzinski <bmarzins@redhat.com> -0.4.9.96
+- Add 0258-UPBZ-1300414-PURE_config.patch
+- Add 0264-RHBZ-1365710-no-use-after-free.patch
+  * Fix two segfaults, and NULL out some structures after free
+- Add 0265-RHBZ-1390472-dont-exit.patch
+  * don't exit if multipath hits recoverable errors during startup
+- Resolves: bz #1300414, #1365710, #1390472
+
+* Fri Oct 14 2016 Benjamin Marzinski <bmarzins@redhat.com> -0.4.9.95
+- Modify 0254-RHBZ-1310320-no-kpartx.patch
+  * fix small bug with unitialized data
+- Refresh 0261-RHBZ-1377532-disable-changed-paths.patch
+- Add 0262-RH-free-vector.patch
+  * Fix coverity discovered bug in error path
+- Resolves: bz #1310320
+
+* Fri Oct 14 2016 Benjamin Marzinski <bmarzins@redhat.com> -0.4.9.94
+- Add 0251-RHBZ-1349376-fix-makefile.patch
+  * make multipath use correct version of libdevmapper
+- Add 0252-RHBZ-1333334-huawei-config.patch
+- Add 0253-RHBZ-1305589-check-multipathd.patch
+  * warn if multipath devices exist and mutipathd is not running
+- Add 0254-RHBZ-1310320-no-kpartx.patch
+  * add skip_kpartx option to skip kpartx device creation
+- Add 0255-UPBZ-1322532-disable-reinstate.patch
+  * do not reinstate unusable Implicit ALUA ghost paths
+- Add 0256-RHBZ-1324764-man-page-typo.patch
+- Add 0257-UPBZ-1328077-resize-map.patch
+  * reset size if resizer operation fails
+- Add 0259-UPBZ-1343747-dont-fail-discovery.patch
+  * keep multipath from failing if it fails to get information on any device
+- Add 0260-RHBZ-1364879-check-mpath-prefix.patch
+  * ignore all devices that don't have a uuid starting with "mpath-"
+- Add 0261-RHBZ-1377532-disable-changed-paths.patch
+  * do not use path devices that change their wwid
+- Resolves: bz #1299644, #1305589, #1310320, #1322532, #1324764, #1328077
+- Resovles: bz #1333334, #1343747, #1349376, #1364879, #1377532
+
 * Wed Mar  9 2016 Benjamin Marzinski <bmarzins@redhat.com> -0.4.9.93
 - Add 0250-RHBZ-1316165-fix-i686-size-bug.patch
   * make multipathd use uint64_t for tracking the interactive command
@@ -819,7 +915,7 @@ fi
   * rewrite multipath sysfs device handling to fix various issues from
     bzs #1012672, #1064636, and #1049637
 - Add 0197-RHBZ-1049315-netapp-rw-change.patch
-  * allow reload_rewrite to be set by device, and set it by default for
+  * allow reload_readwrite to be set by device, and set it by default for
     netapp devices.
 - Add 0198-RHBZ-1080052-orphan-paths-on-reload.patch
   * make multipath orphan paths that are no longer included in the device

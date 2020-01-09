@@ -1,0 +1,175 @@
+---
+ libmultipath/configure.c |    8 +++---
+ multipathd/main.c        |   61 ++++++++++++++++++++++++++++++-----------------
+ 2 files changed, 45 insertions(+), 24 deletions(-)
+
+Index: multipath-tools/libmultipath/configure.c
+===================================================================
+--- multipath-tools.orig/libmultipath/configure.c
++++ multipath-tools/libmultipath/configure.c
+@@ -760,8 +760,10 @@ coalesce_paths (struct vectors * vecs, v
+ 		 * at this point, we know we really got a new mp
+ 		 */
+ 		mpp = add_map_with_path(vecs, pp1, 0);
+-		if (!mpp)
+-			return 1;
++		if (!mpp) {
++			orphan_path(pp1);
++			continue;
++		}
+ 
+ 		if (pp1->priority == PRIO_UNDEF)
+ 			mpp->action = ACT_REJECT;
+@@ -809,7 +811,7 @@ coalesce_paths (struct vectors * vecs, v
+ 			condlog(3, "%s: domap (%u) failure "
+ 				   "for create/reload map",
+ 				mpp->alias, r);
+-			if (r == DOMAP_FAIL) {
++			if (r == DOMAP_FAIL || conf->daemon) {
+ 				condlog(2, "%s: %s map",
+ 					mpp->alias, (mpp->action == ACT_CREATE)?
+ 					"ignoring" : "removing");
+Index: multipath-tools/multipathd/main.c
+===================================================================
+--- multipath-tools.orig/multipathd/main.c
++++ multipath-tools/multipathd/main.c
+@@ -1414,21 +1414,29 @@ configure (struct vectors * vecs, int st
+ 	vector mpvec;
+ 	int i, ret;
+ 
+-	if (!vecs->pathvec && !(vecs->pathvec = vector_alloc()))
++	if (!vecs->pathvec && !(vecs->pathvec = vector_alloc())) {
++		condlog(0, "couldn't allocate path vec in configure");
+ 		return 1;
++	}
+ 
+-	if (!vecs->mpvec && !(vecs->mpvec = vector_alloc()))
++	if (!vecs->mpvec && !(vecs->mpvec = vector_alloc())) {
++		condlog(0, "couldn't allocate multipath vec in configure");
+ 		return 1;
++	}
+ 
+-	if (!(mpvec = vector_alloc()))
++	if (!(mpvec = vector_alloc())) {
++		condlog(0, "couldn't allocate new maps vec in configure");
+ 		return 1;
++	}
+ 
+ 	/*
+ 	 * probe for current path (from sysfs) and map (from dm) sets
+ 	 */
+ 	ret = path_discovery(vecs->pathvec, conf, DI_ALL);
+-	if (ret < 0)
++	if (ret < 0) {
++		condlog(0, "configure failed at path discovery");
+ 		goto fail;
++	}
+ 
+ 	vector_foreach_slot (vecs->pathvec, pp, i){
+ 		if (filter_path(conf, pp) > 0){
+@@ -1439,21 +1447,27 @@ configure (struct vectors * vecs, int st
+ 		else
+ 			pp->checkint = conf->checkint;
+ 	}
+-	if (map_discovery(vecs))
++	if (map_discovery(vecs)) {
++		condlog(0, "configure failed at map discovery");
+ 		goto fail;
++	}
+ 
+ 	/*
+ 	 * create new set of maps & push changed ones into dm
+ 	 */
+-	if (coalesce_paths(vecs, mpvec, NULL, 1))
++	if (coalesce_paths(vecs, mpvec, NULL, 1)) {
++		condlog(0, "configure failed while coalescing paths");
+ 		goto fail_maps;
++	}
+ 
+ 	/*
+ 	 * may need to remove some maps which are no longer relevant
+ 	 * e.g., due to blacklist changes in conf file
+ 	 */
+-	if (coalesce_maps(vecs, mpvec))
++	if (coalesce_maps(vecs, mpvec)) {
++		condlog(0, "configure failed while coalescing maps");
+ 		goto fail_maps;
++	}
+ 
+ 	dm_lib_release();
+ 
+@@ -1688,16 +1702,18 @@ child (void * param)
+ 	condlog(2, "--------start up--------");
+ 	condlog(2, "read " DEFAULT_CONFIGFILE);
+ 
+-	if (load_config(DEFAULT_CONFIGFILE))
+-		exit(1);
++	if (load_config(DEFAULT_CONFIGFILE)) {
++		condlog(0, "failed to load config");
++		goto fail;
++	}
+ 
+ 	if (init_checkers()) {
+ 		condlog(0, "failed to initialize checkers");
+-		exit(1);
++		goto fail;
+ 	}
+ 	if (init_prio()) {
+ 		condlog(0, "failed to initialize prioritizers");
+-		exit(1);
++		goto fail;
+ 	}
+ 
+ 	setlogmask(LOG_UPTO(conf->verbosity + 3));
+@@ -1720,23 +1736,21 @@ child (void * param)
+ 				conf->max_fds, strerror(errno));
+ 	}
+ 
+-	if (pidfile_create(DEFAULT_PIDFILE, getpid())) {
+-		if (logsink)
+-			log_thread_stop();
+-
+-		exit(1);
+-	}
++	if (pidfile_create(DEFAULT_PIDFILE, getpid()))
++		goto fail;
+ 	signal_init();
+ 	setscheduler();
+ 	set_oom_adj();
+ 	vecs = gvecs = init_vecs();
+ 
+-	if (!vecs)
+-		exit(1);
++	if (!vecs) {
++		condlog(0, "failed to create vecs");
++		goto fail;
++	}
+ 
+ 	if (sysfs_init(conf->sysfs_dir, FILE_NAME_SIZE)) {
+ 		condlog(0, "can not find sysfs mount point");
+-		exit(1);
++		goto fail;
+ 	}
+ 	conf->daemon = 1;
+ 	dm_udev_set_sync_support(0);
+@@ -1752,7 +1766,7 @@ child (void * param)
+ 	if (configure(vecs, 1)) {
+ 		unlock(vecs->lock);
+ 		condlog(0, "failure during configuration");
+-		exit(1);
++		goto fail;
+ 	}
+ 	unlock(vecs->lock);
+ 	/*
+@@ -1829,6 +1843,11 @@ child (void * param)
+ #endif
+ 
+ 	exit(0);
++
++fail:
++	if (logsink)
++		log_thread_stop();
++	exit(1);
+ }
+ 
+ static int

@@ -1,0 +1,233 @@
+---
+ libmultipath/config.c      |    1 +
+ libmultipath/config.h      |    1 +
+ libmultipath/dict.c        |   33 +++++++++++++++++++++++++++++++++
+ libmultipath/discovery.c   |    2 +-
+ libmultipath/discovery.h   |    1 +
+ libmultipath/dmparser.c    |    9 +++++++++
+ libmultipath/structs.h     |    1 +
+ multipath/multipath.conf.5 |    8 ++++++++
+ multipathd/main.c          |   31 +++++++++++++++++++++++++++++--
+ 9 files changed, 84 insertions(+), 3 deletions(-)
+
+Index: multipath-tools/libmultipath/discovery.c
+===================================================================
+--- multipath-tools.orig/libmultipath/discovery.c
++++ multipath-tools/libmultipath/discovery.c
+@@ -1038,7 +1038,7 @@ get_state (struct path * pp, int daemon)
+ 	return state;
+ }
+ 
+-static int
++int
+ get_uid (struct path * pp)
+ {
+ 	char buff[CALLOUT_MAX_SIZE];
+Index: multipath-tools/libmultipath/discovery.h
+===================================================================
+--- multipath-tools.orig/libmultipath/discovery.h
++++ multipath-tools/libmultipath/discovery.h
+@@ -45,6 +45,7 @@ int sysfs_get_timeout(struct sysfs_devic
+ int sysfs_get_ro (struct sysfs_device * dev, unsigned int * ro);
+ int sysfs_get_host_pci_name(struct path *pp, char *pci_name);
+ int sysfs_get_iscsi_ip_address(struct path *pp, char *ip_address);
++int get_uid (struct path * pp);
+ 
+ /*
+  * discovery bitmask
+Index: multipath-tools/libmultipath/structs.h
+===================================================================
+--- multipath-tools.orig/libmultipath/structs.h
++++ multipath-tools/libmultipath/structs.h
+@@ -203,6 +203,7 @@ struct path {
+ 	struct checker checker;
+ 	struct multipath * mpp;
+ 	int fd;
++	int wwid_changed;
+ 	
+ 	/* configlet pointers */
+ 	struct hwentry * hwe;
+Index: multipath-tools/multipathd/main.c
+===================================================================
+--- multipath-tools.orig/multipathd/main.c
++++ multipath-tools/multipathd/main.c
+@@ -369,7 +369,7 @@ uev_umount_map (struct sysfs_device * de
+ }
+ 
+ static int
+-uev_check_for_rw (struct sysfs_device * dev, struct vectors * vecs)
++uev_update_path (struct sysfs_device * dev, struct vectors * vecs)
+ {
+ 	struct path * pp;
+ 	struct multipath * mpp;
+@@ -382,6 +382,27 @@ uev_check_for_rw (struct sysfs_device * 
+ 
+ 	if (!pp || !pp->mpp) /* not a multipath path device */
+ 		return 0;
++
++	if (conf->disable_changed_wwids &&
++	    (strlen(pp->wwid) || pp->wwid_changed)) {
++		char wwid[WWID_SIZE];
++
++		strcpy(wwid, pp->wwid);
++		get_uid(pp);
++		if (strcmp(wwid, pp->wwid) != 0) {
++			condlog(0, "%s: path wwid changed from '%s' to '%s'. disallowing", dev->kernel, wwid, pp->wwid);
++			strcpy(pp->wwid, wwid);
++			if (!pp->wwid_changed) {
++				pp->wwid_changed = 1;
++				pp->tick = 1;
++				dm_fail_path(pp->mpp->alias, pp->dev_t);
++			}
++		}
++		else {
++			pp->wwid_changed = 0;
++		}
++	}
++
+ 	/* reinit the prio values on change event, in case something is
+ 	 * different */
+ 	prio_init(&pp->prio);
+@@ -829,7 +850,7 @@ uev_trigger (struct uevent * uev, void *
+ 		goto out;
+ 	}
+ 	if (!strncmp(uev->action, "change", 6)) {
+-		r = uev_check_for_rw(sysdev, vecs);
++		r = uev_update_path(sysdev, vecs);
+ 		goto out;
+ 	}
+ 
+@@ -1161,6 +1182,12 @@ check_path (struct vectors * vecs, struc
+ 
+ 	newstate = get_state(pp, 1);
+ 
++	if (pp->wwid_changed) {
++		condlog(2, "%s: path wwid has changed. Refusing to use",
++			pp->dev);
++		newstate = PATH_DOWN;
++	}
++
+ 	if (newstate == PATH_WILD || newstate == PATH_UNCHECKED) {
+ 		condlog(2, "%s: unusable path", pp->dev);
+ 		pathinfo(pp, conf->hwtable, 0);
+Index: multipath-tools/libmultipath/config.c
+===================================================================
+--- multipath-tools.orig/libmultipath/config.c
++++ multipath-tools/libmultipath/config.c
+@@ -581,6 +581,7 @@ load_config (char * file)
+ 	conf->processed_main_config = 0;
+ 	conf->maps_present = 0;
+ 	conf->skip_kpartx = DEFAULT_SKIP_KPARTX;
++	conf->disable_changed_wwids = 0;
+ 
+ 	/*
+ 	 * preload default hwtable
+Index: multipath-tools/libmultipath/config.h
+===================================================================
+--- multipath-tools.orig/libmultipath/config.h
++++ multipath-tools/libmultipath/config.h
+@@ -122,6 +122,7 @@ struct config {
+ 	int delay_wait_checks;
+ 	int maps_present;
+ 	int skip_kpartx;
++	int disable_changed_wwids;
+ 
+ 	char * dev;
+ 	char * sysfs_dir;
+Index: multipath-tools/libmultipath/dict.c
+===================================================================
+--- multipath-tools.orig/libmultipath/dict.c
++++ multipath-tools/libmultipath/dict.c
+@@ -809,6 +809,29 @@ def_skip_kpartx_handler(vector strvec)
+ 	return 0;
+ }
+ 
++static int
++def_disable_changed_wwids_handler(vector strvec)
++{
++	char * buff;
++
++	buff = set_value(strvec);
++
++	if (!buff)
++		return 1;
++
++	if ((strlen(buff) == 2 && !strcmp(buff, "no")) ||
++	    (strlen(buff) == 1 && !strcmp(buff, "0")))
++		conf->disable_changed_wwids = 0;
++	else if ((strlen(buff) == 3 && !strcmp(buff, "yes")) ||
++		 (strlen(buff) == 1 && !strcmp(buff, "1")))
++		conf->disable_changed_wwids = 1;
++	else
++		conf->disable_changed_wwids = 0;
++
++	FREE(buff);
++	return 0;
++}
++
+ /*
+  * blacklist block handlers
+  */
+@@ -3084,6 +3107,15 @@ snprint_def_skip_kpartx(char * buff, int
+ }
+ 
+ static int
++snprint_def_disable_changed_wwids(char * buff, int len, void * data)
++{
++	if (conf->disable_changed_wwids == 1)
++		return snprintf(buff, len, "yes");
++	else
++		return snprintf(buff, len, "no");
++}
++
++static int
+ snprint_ble_simple (char * buff, int len, void * data)
+ {
+ 	struct blentry * ble = (struct blentry *)data;
+@@ -3150,6 +3182,7 @@ init_keywords(void)
+ 	install_keyword("config_dir", &def_config_dir_handler, &snprint_def_config_dir);
+ 	install_keyword("delay_watch_checks", &def_delay_watch_checks_handler, &snprint_def_delay_watch_checks);
+ 	install_keyword("delay_wait_checks", &def_delay_wait_checks_handler, &snprint_def_delay_wait_checks);
++	install_keyword("disable_changed_wwids", &def_disable_changed_wwids_handler, &snprint_def_disable_changed_wwids);
+ 	__deprecated install_keyword("mode", &def_mode_handler, &snprint_def_mode);
+ 	__deprecated install_keyword("uid", &def_uid_handler, &snprint_def_uid);
+ 	__deprecated install_keyword("gid", &def_gid_handler, &snprint_def_gid);
+Index: multipath-tools/libmultipath/dmparser.c
+===================================================================
+--- multipath-tools.orig/libmultipath/dmparser.c
++++ multipath-tools/libmultipath/dmparser.c
+@@ -402,6 +402,15 @@ disassemble_map (vector pathvec, char * 
+ 			else if (!strlen(pp->wwid))
+ 				strncpy(pp->wwid, mpp->wwid, WWID_SIZE);
+ 
++			/*
++			 * Something went wrong. Likely the user changed the
++			 * path uid_attribute after creating a device
++			 */
++			else if (strcmp(pp->wwid, mpp->wwid) != 0) {
++				condlog(0, "%s: path wwid appears to have changed. Using map wwid.\n", pp->dev_t);
++				strncpy(pp->wwid, mpp->wwid, WWID_SIZE);
++			}
++
+ 			pgp->id ^= (long)pp;
+ 			pp->pgindex = i + 1;
+ 
+Index: multipath-tools/multipath/multipath.conf.5
+===================================================================
+--- multipath-tools.orig/multipath/multipath.conf.5
++++ multipath-tools/multipath/multipath.conf.5
+@@ -476,6 +476,14 @@ If set to
+ .I yes
+ , kpartx will not automatically create partitions on the device. The default is
+ .I no
++.TP
++.B disable_changed_wwids
++If set to
++.I yes
++and the wwid of a path device changes while it is part of a multipath device,
++multipath will disable access to the path device until the wwid of the path is
++restored to the wwid of the multipath device. Default is
++.I no
+ .
+ .SH "blacklist section"
+ The
