@@ -1,7 +1,7 @@
 Summary: Tools to manage multipath devices using device-mapper
 Name: device-mapper-multipath
 Version: 0.4.9
-Release: 119%{?dist}.1
+Release: 123%{?dist}
 License: GPL+
 Group: System Environment/Base
 URL: http://christophe.varoqui.free.fr/
@@ -243,7 +243,19 @@ Patch0233: 0233-RHBZ-1451852-1482629-nimble-config.patch
 Patch0234: 0234-RHBZ-1500109-doc-typo.patch
 Patch0235: 0235-RHBZ-1480638-NVMe-support.patch
 Patch0236: 0236-RHBZ-1525348-fix-msg.patch
-Patch0237: 0237-RHBZ-1607749-add-transport-blacklist.patch
+Patch0237: 0237-RHBZ-1526876-show-sysfs-state.patch
+Patch0238: 0238-RHBZ-1508483-mpathconf-info.patch
+Patch0239: 0239-RHBZ-1544958-client-timeout.patch
+Patch0240: 0240-UPBZ-1568902-id_size.patch
+Patch0241: 0241-RHBZ-1554516-show-path-failures.patch
+Patch0242: 0242-RHBZ-1541116-all-tg-pt.patch
+Patch0243: 0243-RHBZ-1498724-save-persist-options.patch
+Patch0244: 0244-RHBZ-1562247-remove-rbd.patch
+Patch0245: 0245-RHBZ-1584228-fix-readsector0_size.patch
+Patch0246: 0246-RHBZ-1593459-add-transport-blacklist.patch
+Patch0247: 0247-RHBZ-1585824-mpathconf-allow-doc.patch
+Patch0248: 0248-RHBZ-1594360-fix-param-rk-doc.patch
+Patch0249: 0249-RHBZ-1610263-mpathpersist-max-fds.patch
 
 # runtime
 Requires: %{name}-libs = %{version}-%{release}
@@ -568,6 +580,18 @@ device-mapper-multipath's libdmmp C API library
 %patch0235 -p1
 %patch0236 -p1
 %patch0237 -p1
+%patch0238 -p1
+%patch0239 -p1
+%patch0240 -p1
+%patch0241 -p1
+%patch0242 -p1
+%patch0243 -p1
+%patch0244 -p1
+%patch0245 -p1
+%patch0246 -p1
+%patch0247 -p1
+%patch0248 -p1
+%patch0249 -p1
 cp %{SOURCE1} .
 
 %build
@@ -685,10 +709,43 @@ fi
 %{_pkgconfdir}/libdmmp.pc
 
 %changelog
-* Tue Jul 24 2018 Benjamin Marzinski <bmarzins@redhat.com> 0.4.9-119.1
-- Add 0237-RHBZ-1607749-add-transport-blacklist.patch
+* Fri Aug 10 2018 Benjamin Marzinski <bmarzins@redhat.com> 0.4.9-123
+- Add 0249-RHBZ-1610263-mpathpersist-max-fds.patch
+  * make mpathpersist honor max_fds multipath.conf parameter
+- Resolves: bz #1610263
+
+* Wed Aug  1 2018 Benjamin Marzinski <bmarzins@redhat.com> 0.4.9-122
+- Add 0248-RHBZ-1594360-fix-param-rk-doc.patch
+- Resolves: bz #1594360
+
+* Thu Jun 21 2018 Benjamin Marzinski <bmarzins@redhat.com> 0.4.9-121
+- Add 0245-RHBZ-1584228-fix-readsector0_size.patch
+  * correctly figure IO size
+- Add 0246-RHBZ-1593459-add-transport-blacklist.patch
   * and new blacklist option, "protocol"
-- Resolves: bz #1607749
+- Add 0247-RHBZ-1585824-mpathconf-allow-doc.patch
+- Resolves: bz #1584228, #1585824, #1593459
+
+* Wed Jun  6 2018 Benjamin Marzinski <bmarzins@redhat.com> 0.4.9-120
+- Add 0237-RHBZ-1526876-show-sysfs-state.patch
+  * Correctly get sysfs state for multipath -l output
+- Add 0238-RHBZ-1508483-mpathconf-info.patch
+- Add 0239-RHBZ-1544958-client-timeout.patch
+  * increase maximum multipathd client reply timeout to 60 seconds
+- Add 0240-UPBZ-1568902-id_size.patch
+  * increase maximum size of product and revision strings to deal with nvme
+- Add 0241-RHBZ-1554516-show-path-failures.patch
+  * add a path failures multipathd path format wildcard
+- Add 0242-RHBZ-1541116-all-tg-pt.patch
+  * add all_tg_pt configuration option to make mpathpersist send only
+    one registration per host
+- Add 0243-RHBZ-1498724-save-persist-options.patch
+  * allow ":aptpl" to be added to the reservation_key to fix multipathd
+    aptpl persistent reservation handling
+- Add 0244-RHBZ-1562247-remove-rbd.patch
+  * remove multipath support for rbd
+- Resolves: bz #1498724, #1508483, #1526876, #1541116, #1544958, #1554516
+- Resolves: bz #1562247, #1568902
 
 * Wed Jan 31 2018 Benjamin Marzinski <bmarzins@redhat.com> 0.4.9-119
 - Add 0236-RHBZ-1525348-fix-msg.patch

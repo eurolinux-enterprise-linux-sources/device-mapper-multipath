@@ -11,10 +11,10 @@
  multipath/multipath.conf.5 |   15 +++++++++
  10 files changed, 194 insertions(+), 12 deletions(-)
 
-Index: multipath-bz1600672/libmultipath/blacklist.c
+Index: multipath-tools-130222/libmultipath/blacklist.c
 ===================================================================
---- multipath-bz1600672.orig/libmultipath/blacklist.c
-+++ multipath-bz1600672/libmultipath/blacklist.c
+--- multipath-tools-130222.orig/libmultipath/blacklist.c
++++ multipath-tools-130222/libmultipath/blacklist.c
 @@ -12,6 +12,8 @@
  #include "structs.h"
  #include "config.h"
@@ -153,10 +153,10 @@ Index: multipath-bz1600672/libmultipath/blacklist.c
  	return r;
  }
  
-Index: multipath-bz1600672/libmultipath/blacklist.h
+Index: multipath-tools-130222/libmultipath/blacklist.h
 ===================================================================
---- multipath-bz1600672.orig/libmultipath/blacklist.h
-+++ multipath-bz1600672/libmultipath/blacklist.h
+--- multipath-tools-130222.orig/libmultipath/blacklist.h
++++ multipath-tools-130222/libmultipath/blacklist.h
 @@ -10,10 +10,12 @@
  #define MATCH_DEVNODE_BLIST 3
  #define MATCH_PROPERTY_BLIST 4
@@ -178,11 +178,11 @@ Index: multipath-bz1600672/libmultipath/blacklist.h
  int store_ble (vector, char *, int);
  int set_ble_device (vector, char *, char *, int);
  void free_blacklist (vector);
-Index: multipath-bz1600672/libmultipath/config.c
+Index: multipath-tools-130222/libmultipath/config.c
 ===================================================================
---- multipath-bz1600672.orig/libmultipath/config.c
-+++ multipath-bz1600672/libmultipath/config.c
-@@ -598,11 +598,13 @@ free_config (struct config * conf)
+--- multipath-tools-130222.orig/libmultipath/config.c
++++ multipath-tools-130222/libmultipath/config.c
+@@ -600,11 +600,13 @@ free_config (struct config * conf)
  	free_blacklist(conf->blist_devnode);
  	free_blacklist(conf->blist_wwid);
  	free_blacklist(conf->blist_property);
@@ -196,7 +196,7 @@ Index: multipath-bz1600672/libmultipath/config.c
  	free_blacklist_device(conf->elist_device);
  
  	free_mptable(conf->mptable);
-@@ -788,6 +790,13 @@ load_config (char * file, struct udev *u
+@@ -792,6 +794,13 @@ load_config (char * file, struct udev *u
  			goto out;
  	}
  
@@ -210,7 +210,7 @@ Index: multipath-bz1600672/libmultipath/config.c
  	if (conf->elist_devnode == NULL) {
  		conf->elist_devnode = vector_alloc();
  
-@@ -815,6 +824,13 @@ load_config (char * file, struct udev *u
+@@ -819,6 +828,13 @@ load_config (char * file, struct udev *u
  			goto out;
  	}
  
@@ -224,11 +224,11 @@ Index: multipath-bz1600672/libmultipath/config.c
  	if (setup_default_blist(conf))
  		goto out;
  
-Index: multipath-bz1600672/libmultipath/config.h
+Index: multipath-tools-130222/libmultipath/config.h
 ===================================================================
---- multipath-bz1600672.orig/libmultipath/config.h
-+++ multipath-bz1600672/libmultipath/config.h
-@@ -190,10 +190,12 @@ struct config {
+--- multipath-tools-130222.orig/libmultipath/config.h
++++ multipath-tools-130222/libmultipath/config.h
+@@ -194,10 +194,12 @@ struct config {
  	vector blist_wwid;
  	vector blist_device;
  	vector blist_property;
@@ -241,11 +241,11 @@ Index: multipath-bz1600672/libmultipath/config.h
  };
  
  struct config * conf;
-Index: multipath-bz1600672/libmultipath/dict.c
+Index: multipath-tools-130222/libmultipath/dict.c
 ===================================================================
---- multipath-bz1600672.orig/libmultipath/dict.c
-+++ multipath-bz1600672/libmultipath/dict.c
-@@ -1065,9 +1065,12 @@ blacklist_handler(vector strvec)
+--- multipath-tools-130222.orig/libmultipath/dict.c
++++ multipath-tools-130222/libmultipath/dict.c
+@@ -1092,9 +1092,12 @@ blacklist_handler(vector strvec)
  		conf->blist_device = vector_alloc();
  	if (!conf->blist_property)
  		conf->blist_property = vector_alloc();
@@ -259,7 +259,7 @@ Index: multipath-bz1600672/libmultipath/dict.c
  		return 1;
  
  	return 0;
-@@ -1084,9 +1087,12 @@ blacklist_exceptions_handler(vector strv
+@@ -1111,9 +1114,12 @@ blacklist_exceptions_handler(vector strv
  		conf->elist_device = vector_alloc();
  	if (!conf->elist_property)
  		conf->elist_property = vector_alloc();
@@ -273,7 +273,7 @@ Index: multipath-bz1600672/libmultipath/dict.c
  		return 1;
  
  	return 0;
-@@ -1171,6 +1177,32 @@ ble_except_property_handler(vector strve
+@@ -1198,6 +1204,32 @@ ble_except_property_handler(vector strve
  }
  
  static int
@@ -306,7 +306,7 @@ Index: multipath-bz1600672/libmultipath/dict.c
  ble_device_handler(vector strvec)
  {
  	return alloc_ble_device(conf->blist_device);
-@@ -3936,6 +3968,7 @@ init_keywords(void)
+@@ -4021,6 +4053,7 @@ init_keywords(void)
  	install_keyword_multi("devnode", &ble_devnode_handler, &snprint_ble_simple);
  	install_keyword_multi("wwid", &ble_wwid_handler, &snprint_ble_simple);
  	install_keyword_multi("property", &ble_property_handler, &snprint_ble_simple);
@@ -314,7 +314,7 @@ Index: multipath-bz1600672/libmultipath/dict.c
  	install_keyword_multi("device", &ble_device_handler, NULL);
  	install_sublevel();
  	install_keyword("vendor", &ble_vendor_handler, &snprint_bled_vendor);
-@@ -3945,6 +3978,7 @@ init_keywords(void)
+@@ -4030,6 +4063,7 @@ init_keywords(void)
  	install_keyword_multi("devnode", &ble_except_devnode_handler, &snprint_ble_simple);
  	install_keyword_multi("wwid", &ble_except_wwid_handler, &snprint_ble_simple);
  	install_keyword_multi("property", &ble_except_property_handler, &snprint_ble_simple);
@@ -322,29 +322,12 @@ Index: multipath-bz1600672/libmultipath/dict.c
  	install_keyword_multi("device", &ble_except_device_handler, NULL);
  	install_sublevel();
  	install_keyword("vendor", &ble_except_vendor_handler, &snprint_bled_vendor);
-Index: multipath-bz1600672/libmultipath/discovery.c
+Index: multipath-tools-130222/libmultipath/print.c
 ===================================================================
---- multipath-bz1600672.orig/libmultipath/discovery.c
-+++ multipath-bz1600672/libmultipath/discovery.c
-@@ -1489,9 +1489,10 @@ pathinfo (struct path *pp, vector hwtabl
- 
- 	if (mask & DI_BLACKLIST && mask & DI_SYSFS) {
- 		if (filter_device(conf->blist_device, conf->elist_device,
--				  pp->vendor_id, pp->product_id) > 0) {
-+				  pp->vendor_id, pp->product_id) > 0 ||
-+		    filter_protocol(conf->blist_protocol, conf->elist_protocol,
-+				    pp) > 0)
- 			return PATHINFO_SKIPPED;
--		}
- 	}
- 
- 	path_state = path_offline(pp);
-Index: multipath-bz1600672/libmultipath/print.c
-===================================================================
---- multipath-bz1600672.orig/libmultipath/print.c
-+++ multipath-bz1600672/libmultipath/print.c
-@@ -601,6 +601,48 @@ snprint_path_checker (char * buff, size_
- 	return snprint_str(buff, len, c->name);
+--- multipath-tools-130222.orig/libmultipath/print.c
++++ multipath-tools-130222/libmultipath/print.c
+@@ -607,6 +607,48 @@ snprint_path_failures(char * buff, size_
+ 	return snprint_int(buff, len, pp->failcount);
  }
  
 +/* if you add a protocol string bigger than "scsi:unspec" you must
@@ -392,15 +375,15 @@ Index: multipath-bz1600672/libmultipath/print.c
  struct multipath_data mpd[] = {
  	{'n', "name",          0, snprint_name},
  	{'w', "uuid",          0, snprint_multipath_uuid},
-@@ -647,6 +689,7 @@ struct path_data pd[] = {
- 	{'R', "host WWPN",     0, snprint_host_wwpn},
+@@ -654,6 +696,7 @@ struct path_data pd[] = {
  	{'r', "target WWPN",   0, snprint_tgt_wwpn},
  	{'a', "host adapter",  0, snprint_host_adapter},
+ 	{'0', "failures",      0, snprint_path_failures},
 +	{'P', "protocol",      0, snprint_path_protocol},
  	{0, NULL, 0 , NULL}
  };
  
-@@ -1428,6 +1471,19 @@ snprint_blacklist_report (char * buff, i
+@@ -1435,6 +1478,19 @@ snprint_blacklist_report (char * buff, i
  
  	if ((len - fwd - threshold) <= 0)
  		return len;
@@ -420,7 +403,7 @@ Index: multipath-bz1600672/libmultipath/print.c
  	fwd += snprintf(buff + fwd, len - fwd, "wwid rules:\n"
  					       "- blacklist:\n");
  	if (snprint_blacklist_group(buff, len, &fwd, &conf->blist_wwid) == 0)
-@@ -1502,6 +1558,15 @@ snprint_blacklist (char * buff, int len)
+@@ -1509,6 +1565,15 @@ snprint_blacklist (char * buff, int len)
  		if (fwd > len)
  			return len;
  	}
@@ -436,7 +419,7 @@ Index: multipath-bz1600672/libmultipath/print.c
  	rootkw = find_keyword(rootkw->sub, "device");
  	if (!rootkw)
  		return 0;
-@@ -1575,6 +1640,15 @@ snprint_blacklist_except (char * buff, i
+@@ -1582,6 +1647,15 @@ snprint_blacklist_except (char * buff, i
  		if (!kw)
  			return 0;
  		fwd += snprint_keyword(buff + fwd, len - fwd, "\t%k %v\n",
@@ -452,10 +435,10 @@ Index: multipath-bz1600672/libmultipath/print.c
  				       kw, ele);
  		if (fwd > len)
  			return len;
-Index: multipath-bz1600672/libmultipath/print.h
+Index: multipath-tools-130222/libmultipath/print.h
 ===================================================================
---- multipath-bz1600672.orig/libmultipath/print.h
-+++ multipath-bz1600672/libmultipath/print.h
+--- multipath-tools-130222.orig/libmultipath/print.h
++++ multipath-tools-130222/libmultipath/print.h
 @@ -115,6 +115,8 @@ int snprint_host_wwnn (char *, size_t, s
  int snprint_host_wwpn (char *, size_t, struct path *);
  int snprint_tgt_wwnn (char *, size_t, struct path *);
@@ -465,23 +448,40 @@ Index: multipath-bz1600672/libmultipath/print.h
  
  void print_multipath_topology (struct multipath * mpp, int verbosity);
  void print_path (struct path * pp, char * style);
-Index: multipath-bz1600672/libmultipath/structs.h
+Index: multipath-tools-130222/libmultipath/structs.h
 ===================================================================
---- multipath-bz1600672.orig/libmultipath/structs.h
-+++ multipath-bz1600672/libmultipath/structs.h
-@@ -50,7 +50,6 @@ enum failback_mode {
+--- multipath-tools-130222.orig/libmultipath/structs.h
++++ multipath-tools-130222/libmultipath/structs.h
+@@ -57,7 +57,6 @@ enum failback_mode {
  enum sysfs_buses {
  	SYSFS_BUS_UNDEF,
  	SYSFS_BUS_SCSI,
 -	SYSFS_BUS_IDE,
  	SYSFS_BUS_CCW,
  	SYSFS_BUS_CCISS,
- 	SYSFS_BUS_RBD,
-Index: multipath-bz1600672/multipath/multipath.conf.5
+ 	SYSFS_BUS_NVME,
+Index: multipath-tools-130222/libmultipath/discovery.c
 ===================================================================
---- multipath-bz1600672.orig/multipath/multipath.conf.5
-+++ multipath-bz1600672/multipath/multipath.conf.5
-@@ -632,6 +632,10 @@ Regular expression of the device nodes t
+--- multipath-tools-130222.orig/libmultipath/discovery.c
++++ multipath-tools-130222/libmultipath/discovery.c
+@@ -1407,9 +1407,10 @@ pathinfo (struct path *pp, vector hwtabl
+ 
+ 	if (mask & DI_BLACKLIST && mask & DI_SYSFS) {
+ 		if (filter_device(conf->blist_device, conf->elist_device,
+-				  pp->vendor_id, pp->product_id) > 0) {
++				  pp->vendor_id, pp->product_id) > 0 ||
++		    filter_protocol(conf->blist_protocol, conf->elist_protocol,
++				    pp) > 0)
+ 			return PATHINFO_SKIPPED;
+-		}
+ 	}
+ 
+ 	path_state = path_offline(pp);
+Index: multipath-tools-130222/multipath/multipath.conf.5
+===================================================================
+--- multipath-tools-130222.orig/multipath/multipath.conf.5
++++ multipath-tools-130222/multipath/multipath.conf.5
+@@ -640,6 +640,10 @@ Regular expression of the device nodes t
  .B property
  Regular expresion of the udev property to be excluded.
  .TP
@@ -492,7 +492,7 @@ Index: multipath-bz1600672/multipath/multipath.conf.5
  .B device
  Subsection for the device description. This subsection recognizes the
  .I vendor
-@@ -640,6 +644,13 @@ and
+@@ -648,6 +652,13 @@ and
  keywords. For a full description of these keywords please see the
  .I devices
  section description.
@@ -506,7 +506,7 @@ Index: multipath-bz1600672/multipath/multipath.conf.5
  .SH "blacklist_exceptions section"
  The
  .I blacklist_exceptions
-@@ -659,6 +670,10 @@ The \fIWorld Wide Identification\fR of a
+@@ -667,6 +678,10 @@ The \fIWorld Wide Identification\fR of a
  .B property
  Regular expresion of the udev property to be whitelisted.
  .TP
