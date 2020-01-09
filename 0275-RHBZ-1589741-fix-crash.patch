@@ -1,0 +1,56 @@
+---
+ libmultipath/uevent.c |   16 +++-------------
+ 1 file changed, 3 insertions(+), 13 deletions(-)
+
+Index: multipath-tools/libmultipath/uevent.c
+===================================================================
+--- multipath-tools.orig/libmultipath/uevent.c
++++ multipath-tools/libmultipath/uevent.c
+@@ -144,13 +144,6 @@ uevent_dispatch(int (*uev_trigger)(struc
+ 	}
+ }
+ 
+-static void socket_cleanup(void *args)
+-{
+-	int *sock = (int *)args;
+-	if (*sock >= 0)
+-		close(*sock);
+-}
+-
+ int uevent_listen(void)
+ {
+ 	int sock = -1;
+@@ -193,7 +186,7 @@ int uevent_listen(void)
+ 		}
+ 		if (retries < 0) {
+ 			condlog(0, "bind failed, exit");
+-			goto fail;
++			goto exit;
+ 		}
+ 
+ 		/* enable receiving of the sender credentials */
+@@ -246,11 +239,10 @@ int uevent_listen(void)
+ 		}
+ 		if (retries < 0) {
+ 			condlog(0, "bind failed, exit");
+-			goto fail;
++			goto exit;
+ 		}
+ 	}
+ 
+-	pthread_cleanup_push(socket_cleanup, &sock);
+ 	while (1) {
+ 		int i;
+ 		char *pos;
+@@ -373,10 +365,8 @@ int uevent_listen(void)
+ 		pthread_cond_signal(uev_condp);
+ 		pthread_mutex_unlock(uevc_lockp);
+ 	}
+-	pthread_cleanup_pop(1);
+-	return 0;
+ 
+-fail:
++exit:
+ 	close(sock);
+ 	return 1;
+ }

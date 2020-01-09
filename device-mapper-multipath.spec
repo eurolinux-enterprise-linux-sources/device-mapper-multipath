@@ -1,7 +1,7 @@
 Summary: Tools to manage multipath devices using device-mapper
 Name: device-mapper-multipath
 Version: 0.4.9
-Release: 106%{?dist}
+Release: 106%{?dist}.1
 License: GPL+
 Group: System Environment/Base
 URL: http://christophe.varoqui.free.fr/
@@ -285,6 +285,7 @@ Patch1271: 0271-RHBZ-1444193-fix-hang-on-resume.patch
 Patch1272: 0272-RHBZ-1525217-3PAR-config.patch
 Patch1273: 0273-RHBZ-1550069-fix-messages.patch
 Patch1274: 0274-RHBZ-1573463-uevent-socket.patch
+Patch1275: 0275-RHBZ-1589741-fix-crash.patch
 
 
 # runtime
@@ -604,6 +605,7 @@ kpartx manages partition creation and removal for device-mapper devices.
 %patch1272 -p1
 %patch1273 -p1
 %patch1274 -p1
+%patch1275 -p1
 cp %{SOURCE1} .
 
 %build
@@ -688,6 +690,11 @@ fi
 %{_mandir}/man8/kpartx.8.gz
 
 %changelog
+* Mon Sep 10 2018 Benjamin Marzinski <bmarzins@redhat.com> -0.4.9.106.1
+- Add 0275-RHBZ-1589741-fix-crash.patch
+  * revert crashing code from 0274-RHBZ-1573463-uevent-socket.patch
+- Resolves: #1589741
+
 * Wed May 16 2018 Benjamin Marzinski <bmarzins@redhat.com> -0.4.9.106
 - Modify 0272-RHBZ-1525217-3PAR-config.patch
   * revert path selector to round-robin
