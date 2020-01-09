@@ -1,7 +1,7 @@
 Summary: Tools to manage multipath devices using device-mapper
 Name: device-mapper-multipath
 Version: 0.4.9
-Release: 100%{?dist}
+Release: 100%{?dist}.1
 License: GPL+
 Group: System Environment/Base
 URL: http://christophe.varoqui.free.fr/
@@ -278,6 +278,7 @@ Patch1264: 0264-RHBZ-1390472-dont-exit.patch
 Patch1265: 0265-RHBZ-1355669-max-sectors-kb.patch
 Patch1266: 0266-RHBZ-1401391-fix-prio-put.patch
 Patch1267: 0267-RHBZ-1401769-orphan-status.patch
+Patch1268: 0268-RHBZ-1497059-fix-reserve.patch
 
 
 # runtime
@@ -590,6 +591,7 @@ kpartx manages partition creation and removal for device-mapper devices.
 %patch1265 -p1
 %patch1266 -p1
 %patch1267 -p1
+%patch1268 -p1
 cp %{SOURCE1} .
 
 %build
@@ -674,6 +676,11 @@ fi
 %{_mandir}/man8/kpartx.8.gz
 
 %changelog
+* Fri Sep 29 2017 Benjamin Marzinski <bmarzins@redhat.com> -0.4.9.100.1
+- Add 0268-RHBZ-1497059-fix-reserve.patch
+  * stop waiting for threads that weren't successfully created
+- Resolves: bz #1497059
+
 * Thu Jan  5 2017 Benjamin Marzinski <bmarzins@redhat.com> -0.4.9.100
 - Modify 0261-RHBZ-1377532-disable-changed-paths.patch
   * add man page information
